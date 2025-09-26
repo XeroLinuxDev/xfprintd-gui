@@ -29,10 +29,21 @@ impl PamConfig {
             return false;
         }
 
-        match std::fs::read_to_string(path) {
-            Ok(content) => content.contains("pam_fprintd.so"),
-            Err(_) => false,
-        }
+        let content = match std::fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(_) => return false,
+        };
+
+        let expected_config = match PAM_CONFIGS.get(path) {
+            Some(config) => config,
+            None => return false,
+        };
+
+        expected_config.lines().all(|expected_line| {
+            content
+                .lines()
+                .any(|file_line| file_line.trim() == expected_line.trim())
+        })
     }
 
     pub fn apply_patch(path: &str) -> io::Result<()> {
@@ -52,8 +63,6 @@ PATCH"#,
             content = content
         );
 
-        // eprintln!("Executing apply command for {}:\n{}", path, cmd);
-
         let output = Command::new("/sbin/pkexec")
             .arg("bash")
             .arg("-c")
@@ -63,15 +72,10 @@ PATCH"#,
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr).to_string();
-            // eprintln!("Error applying patch to {}: {}", path, err);
+
             return Err(io::Error::other(err));
         }
-        // if !output.stdout.is_empty() {
-        //     // eprintln!(
-        //     //     "Command output:\n{}",
-        //     //     String::from_utf8_lossy(&output.stdout)
-        //     // );
-        // }
+
         Ok(())
     }
 
@@ -113,8 +117,6 @@ fi"#,
             script = sed_script
         );
 
-        // eprintln!("Executing remove command for {}:\n{}", path, cmd);
-
         let output = Command::new("/sbin/pkexec")
             .arg("bash")
             .arg("-c")
@@ -124,15 +126,10 @@ fi"#,
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr).to_string();
-            // eprintln!("Error removing patch from {}: {}", path, err);
+
             return Err(io::Error::other(err));
         }
-        // if !output.stdout.is_empty() {
-        //     // eprintln!(
-        //     //     "Command output:\n{}",
-        //     //     String::from_utf8_lossy(&output.stdout)
-        //     // );
-        // }
+
         Ok(())
     }
 
@@ -145,7 +142,6 @@ fi"#,
 
     pub fn copy_default_polkit() -> io::Result<()> {
         let cmd = "if [ ! -f '/etc/pam.d/polkit-1' ] && [ -f '/usr/lib/pam.d/polkit-1' ]; then echo 'Copying default polkit config' && cp '/usr/lib/pam.d/polkit-1' '/etc/pam.d/polkit-1'; else echo 'polkit config exists or default missing, skipping copy'; fi";
-        // eprintln!("Executing polkit copy command:\n{}", cmd);
 
         let output = Command::new("/sbin/pkexec")
             .arg("bash")
@@ -156,15 +152,10 @@ fi"#,
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr).to_string();
-            // eprintln!("Error copying polkit config: {}", err);
+
             return Err(io::Error::other(err));
         }
-        // if !output.stdout.is_empty() {
-        //     // eprintln!(
-        //     //     "Command output:\n{}",
-        //     //     String::from_utf8_lossy(&output.stdout)
-        //     // );
-        // }
+
         Ok(())
     }
 }
