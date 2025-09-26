@@ -1,9 +1,15 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, Button, Image, Label, Orientation, Switch, Stack, Align, Grid};
+use gtk4::{
+    Align, Application, ApplicationWindow, Box as GtkBox, Button, Grid, Image, Label, Orientation,
+    Stack, Switch,
+};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::path::Path;
 use std::process::Command;
+use std::rc::Rc;
+
+mod pam_config;
+use pam_config::PamConfig;
 
 #[derive(Clone, Copy, PartialEq)]
 enum FingerprintState {
@@ -22,13 +28,13 @@ fn run_enroll_in_terminal(finger: &str) {
     let cmd = format!("fprintd-enroll -f {}", finger);
 
     let result = Command::new("konsole")
-    .args(&["--noclose", "-e", "bash", "-c", &cmd])
-    .spawn();
+        .args(["--noclose", "-e", "bash", "-c", &cmd])
+        .spawn();
 
     if result.is_err() {
         let _ = Command::new("cosmic-term")
-        .args(&["-e", "bash", "-c", &cmd])
-        .spawn();
+            .args(["-e", "bash", "-c", &cmd])
+            .spawn();
     }
 }
 
@@ -74,25 +80,86 @@ fn build_main_page(app_state: Rc<RefCell<AppState>>, stack: &Stack) -> GtkBox {
     grid.set_column_spacing(15);
     grid.set_halign(Align::Center);
 
+    let (login_configured, sudo_configured, polkit_configured) = PamConfig::check_configurations();
+
     let sw_login = Switch::new();
-    sw_login.set_sensitive(false);
+    sw_login.set_active(login_configured);
+    sw_login.set_sensitive(true);
     sw_login.set_tooltip_text(Some("Enroll fingerprint first."));
-    grid.attach(&Label::new(Some("Enable Authentication On Login")), 0, 0, 1, 1);
+    grid.attach(
+        &Label::new(Some("Enable Authentication On Login")),
+        0,
+        0,
+        1,
+        1,
+    );
     grid.attach(&sw_login, 1, 0, 1, 1);
 
     let sw_term = Switch::new();
-    sw_term.set_sensitive(false);
+    sw_term.set_active(sudo_configured);
+    sw_term.set_sensitive(true);
     sw_term.set_tooltip_text(Some("Enroll fingerprint first."));
-    grid.attach(&Label::new(Some("Enable Authentication in Terminal")), 0, 1, 1, 1);
+    grid.attach(
+        &Label::new(Some("Enable Authentication in Terminal")),
+        0,
+        1,
+        1,
+        1,
+    );
     grid.attach(&sw_term, 1, 1, 1, 1);
 
     let sw_prompt = Switch::new();
-    sw_prompt.set_sensitive(false);
+    sw_prompt.set_active(polkit_configured);
+    sw_prompt.set_sensitive(true);
     sw_prompt.set_tooltip_text(Some("Enroll fingerprint first."));
-    grid.attach(&Label::new(Some("Enable Authentication in System Prompt")), 0, 2, 1, 1);
+    grid.attach(
+        &Label::new(Some("Enable Authentication in System Prompt")),
+        0,
+        2,
+        1,
+        1,
+    );
     grid.attach(&sw_prompt, 1, 2, 1, 1);
 
     v.append(&grid);
+
+    {
+        sw_login.connect_state_notify(move |switch| {
+            if switch.is_active() {
+                if PamConfig::apply_patch("/etc/pam.d/login").is_err() {
+                    switch.set_active(false);
+                }
+            } else if PamConfig::remove_patch("/etc/pam.d/login").is_err() {
+                switch.set_active(true);
+            }
+        });
+    }
+
+    {
+        sw_term.connect_state_notify(move |switch| {
+            if switch.is_active() {
+                if PamConfig::apply_patch("/etc/pam.d/sudo").is_err() {
+                    switch.set_active(false);
+                }
+            } else if PamConfig::remove_patch("/etc/pam.d/sudo").is_err() {
+                switch.set_active(true);
+            }
+        });
+    }
+
+    {
+        sw_prompt.connect_state_notify(move |switch| {
+            if switch.is_active() {
+                if PamConfig::copy_default_polkit().is_err()
+                    || PamConfig::apply_patch("/etc/pam.d/polkit-1").is_err()
+                {
+                    switch.set_active(false);
+                }
+            } else if PamConfig::remove_patch("/etc/pam.d/polkit-1").is_err() {
+                switch.set_active(true);
+            }
+        });
+    }
 
     app_state.borrow_mut().sw_login = sw_login;
     app_state.borrow_mut().sw_term = sw_term;
@@ -144,8 +211,16 @@ Once enrolled, you will be able to use it for login or system prompts.",
     grid.set_halign(Align::Center);
 
     let fingers = vec![
-        "left-thumb", "left-index", "left-middle", "left-ring", "left-little",
-        "right-thumb", "right-index", "right-middle", "right-ring", "right-little",
+        "left-thumb",
+        "left-index",
+        "left-middle",
+        "left-ring",
+        "left-little",
+        "right-thumb",
+        "right-index",
+        "right-middle",
+        "right-ring",
+        "right-little",
     ];
 
     for (i, finger) in fingers.iter().enumerate() {
@@ -194,24 +269,24 @@ Once enrolled, you will be able to use it for login or system prompts.",
 
 fn main() {
     let app = Application::builder()
-    .application_id("com.example.fp_gui")
-    .build();
+        .application_id("com.example.fp_gui")
+        .build();
 
     app.connect_activate(|app| {
         let dummy_switch = Switch::new();
         let app_state = Rc::new(RefCell::new(AppState {
             fp_state: FingerprintState::None,
             sw_login: dummy_switch.clone(),
-                                             sw_term: dummy_switch.clone(),
-                                             sw_prompt: dummy_switch.clone(),
+            sw_term: dummy_switch.clone(),
+            sw_prompt: dummy_switch.clone(),
         }));
 
         let window = ApplicationWindow::builder()
-        .application(app)
-        .title("Fingerprint GUI")
-        .default_width(560)
-        .default_height(420)
-        .build();
+            .application(app)
+            .title("Fingerprint GUI")
+            .default_width(560)
+            .default_height(420)
+            .build();
 
         let stack = Stack::new();
         let page_main = build_main_page(app_state.clone(), &stack);
