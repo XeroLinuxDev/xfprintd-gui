@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<gresources>
+  <gresource prefix="/xyz/xerolinux/fp_gui">
+
+    <!-- UI definitions -->
+    <file preprocess="xml-stripblanks" compressed="true">ui/main.ui</file>
+
+    <!--
+      <file compressed="true">css/style.css</file>
+    -->
+  </gresource>
+</gresources>
