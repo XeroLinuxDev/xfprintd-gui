@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, FlowBox, Image, Label,
-    Orientation, Stack, Switch, gio,
+    Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider, FlowBox,
+    Image, Label, Orientation, Stack, StyleContext, Switch, gio,
 };
 use std::cell::RefCell;
 use std::process::Command;
@@ -50,6 +50,14 @@ fn main() {
         if let Some(display) = gtk4::gdk::Display::default() {
             let theme = gtk4::IconTheme::for_display(&display);
             theme.add_resource_path("/xyz/xerolinux/fp_gui/icons");
+            // Load application CSS from gresource
+            let css_provider = CssProvider::new();
+            css_provider.load_from_resource("/xyz/xerolinux/fp_gui/css/style.css");
+            gtk4::StyleContext::add_provider_for_display(
+                &display,
+                &css_provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
         }
 
         // App-wide state

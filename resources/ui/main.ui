@@ -78,30 +78,91 @@
                 </child>
 
                 <!-- Switches section -->
+
                 <child>
-                  <object class="GtkBox" id="switches_box">
-                    <property name="orientation">vertical</property>
-                    <property name="spacing">10</property>
-                    <property name="margin-top">20</property>
-                    <property name="halign">center</property>
+                  <object class="GtkListBox" id="switches_list">
+                    <property name="selection-mode">none</property>
+                    <property name="margin-top">8</property>
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="valign">end</property>
+                    <style>
+                      <class name="boxed-list" />
+                    </style>
+                    <!-- Header row -->
+                    <child>
+                      <object class="GtkListBoxRow" id="row_header">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="hexpand">true</property>
+                            <child>
+                              <object
+                                                                class="GtkLabel"
+                                                                id="switches_section_title"
+                                                            >
+                                <property name="label">Configuration</property>
+                                <property name="halign">center</property>
+                                <property name="xalign">0.5</property>
+                                <style>
+                                  <class name="section-title" />
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
 
                     <!-- Login row -->
                     <child>
-                      <object class="GtkBox" id="row_login">
-                        <property name="orientation">horizontal</property>
-                        <property name="spacing">15</property>
-                        <property name="halign">center</property>
+                      <object class="GtkListBoxRow" id="row_login">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
                         <child>
-                          <object class="GtkLabel" id="lbl_login">
-                            <property
-                                                            name="label"
-                                                        >Enable Authentication On Login</property>
-                            <property name="halign">start</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="sw_login">
-                            <property name="halign">end</property>
+                          <object class="GtkBox">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">12</property>
+                            <property name="hexpand">true</property>
+                            <child>
+                              <object class="GtkBox" id="login_text_box">
+                                <property name="orientation">vertical</property>
+                                <property name="hexpand">true</property>
+                                <child>
+                                  <object class="GtkLabel" id="lbl_login_title">
+                                    <property
+                                                                            name="label"
+                                                                        >Enable Authentication On Login</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-title" />
+                                    </style>
+
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="lbl_login_hint">
+                                    <property
+                                                                            name="label"
+                                                                        >Use your fingerprint to sign into your session.</property>
+                                    <property name="wrap">true</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-hint" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSwitch" id="sw_login">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
@@ -109,21 +170,52 @@
 
                     <!-- Terminal row -->
                     <child>
-                      <object class="GtkBox" id="row_term">
-                        <property name="orientation">horizontal</property>
-                        <property name="spacing">15</property>
-                        <property name="halign">center</property>
+                      <object class="GtkListBoxRow" id="row_term">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
                         <child>
-                          <object class="GtkLabel" id="lbl_term">
-                            <property
-                                                            name="label"
-                                                        >Enable Authentication in Terminal</property>
-                            <property name="halign">start</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="sw_term">
-                            <property name="halign">end</property>
+                          <object class="GtkBox">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">12</property>
+                            <property name="hexpand">true</property>
+                            <child>
+                              <object class="GtkBox" id="term_text_box">
+                                <property name="orientation">vertical</property>
+                                <property name="hexpand">true</property>
+                                <child>
+                                  <object class="GtkLabel" id="lbl_term_title">
+                                    <property
+                                                                            name="label"
+                                                                        >Enable Authentication in Terminal</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-title" />
+                                    </style>
+
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="lbl_term_hint">
+                                    <property
+                                                                            name="label"
+                                                                        >Use fingerprint for sudo and terminal prompts.</property>
+                                    <property name="wrap">true</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-hint" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSwitch" id="sw_term">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
@@ -131,21 +223,55 @@
 
                     <!-- System prompt row -->
                     <child>
-                      <object class="GtkBox" id="row_prompt">
-                        <property name="orientation">horizontal</property>
-                        <property name="spacing">15</property>
-                        <property name="halign">center</property>
+                      <object class="GtkListBoxRow" id="row_prompt">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
                         <child>
-                          <object class="GtkLabel" id="lbl_prompt">
-                            <property
-                                                            name="label"
-                                                        >Enable Authentication in System Prompt</property>
-                            <property name="halign">start</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkSwitch" id="sw_prompt">
-                            <property name="halign">end</property>
+                          <object class="GtkBox">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">12</property>
+                            <property name="hexpand">true</property>
+                            <child>
+                              <object class="GtkBox" id="prompt_text_box">
+                                <property name="orientation">vertical</property>
+                                <property name="hexpand">true</property>
+                                <child>
+                                  <object
+                                                                        class="GtkLabel"
+                                                                        id="lbl_prompt_title"
+                                                                    >
+                                    <property
+                                                                            name="label"
+                                                                        >Enable Authentication in System Prompt</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-title" />
+                                    </style>
+
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="lbl_prompt_hint">
+                                    <property
+                                                                            name="label"
+                                                                        >Use fingerprint for polkit and graphical prompts.</property>
+                                    <property name="wrap">true</property>
+                                    <property name="halign">start</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="toggle-hint" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkSwitch" id="sw_prompt">
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>

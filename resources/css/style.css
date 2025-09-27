@@ -1,0 +1,44 @@
+label.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding-bottom: 8px;
+}
+label.toggle-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    text-align: left;
+}
+
+label.toggle-hint {
+    font-size: 0.85rem;
+    color: alpha(currentColor, 0.7);
+    margin-top: 2px;
+    text-align: left;
+}
+
+#lbl_login_title,
+#lbl_term_title,
+#lbl_prompt_title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    text-align: left;
+}
+
+#lbl_login_hint,
+#lbl_term_hint,
+#lbl_prompt_hint {
+    font-size: 0.85rem;
+    color: alpha(currentColor, 0.7);
+    margin-top: 2px;
+    text-align: left;
+}
+
+GtkListBoxRow {
+    padding: 10px 16px;
+}
+
+.boxed-list {
+    padding: 8px 12px;
+}
