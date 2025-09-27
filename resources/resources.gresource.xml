@@ -6,5 +6,11 @@
     <file preprocess="xml-stripblanks" compressed="true">ui/main.ui</file>
 
     <file compressed="true">css/style.css</file>
+    <!-- Icons -->
+    <file compressed="true">icons/hicolor/scalable/apps/fingerprint.png</file>
+    <file
+            alias="icons/fingerprint.png"
+            compressed="true"
+        >icons/hicolor/scalable/apps/fingerprint.png</file>
   </gresource>
 </gresources>

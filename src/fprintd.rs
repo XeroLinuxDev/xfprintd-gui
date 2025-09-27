@@ -78,24 +78,43 @@ impl<'c> Manager<'c> {
     }
 
     /// Generic call helper.
-    pub fn call<R>(&self, method: &str, args: &(impl Serialize + Type)) -> zbus::Result<R>
+    pub fn call<R>(
+        &self,
+        method: &str,
+        args: &(impl Serialize + Type + std::fmt::Debug),
+    ) -> zbus::Result<R>
     where
         R: DeserializeOwned + Type,
     {
-        self.proxy()?.call(method, args)
+        let proxy = self.proxy()?;
+        println!("[fprintd][Manager] call {}({:?})", method, args);
+        let result = proxy.call(method, args);
+        if let Err(ref e) = result {
+            println!("[fprintd][Manager] {}() error: {}", method, e);
+        }
+        result
     }
 
     /// Generic call helper with timeout override.
     pub fn call_with_timeout<R>(
         &self,
         method: &str,
-        args: &(impl Serialize + Type),
+        args: &(impl Serialize + Type + std::fmt::Debug),
         timeout: Option<Duration>,
     ) -> zbus::Result<R>
     where
         R: DeserializeOwned + Type,
     {
-        self.proxy_with_timeout(timeout)?.call(method, args)
+        let proxy = self.proxy_with_timeout(timeout)?;
+        println!(
+            "[fprintd][Manager] call {}({:?}) with timeout {:?}",
+            method, args, timeout
+        );
+        let result = proxy.call(method, args);
+        if let Err(ref e) = result {
+            println!("[fprintd][Manager] {}() error: {}", method, e);
+        }
+        result
     }
 
     /// Return the list of device object paths known to fprintd.
@@ -104,6 +123,14 @@ impl<'c> Manager<'c> {
     pub fn get_devices(&self) -> zbus::Result<Vec<OwnedObjectPath>> {
         let (paths,): (Vec<OwnedObjectPath>,) = self.call("GetDevices", &())?;
         Ok(paths)
+    }
+
+    /// Return the default device object path if available.
+    ///
+    /// Maps to Manager.GetDefaultDevice() -> o.
+    pub fn get_default_device(&self) -> zbus::Result<OwnedObjectPath> {
+        let (path,): (OwnedObjectPath,) = self.call("GetDefaultDevice", &())?;
+        Ok(path)
     }
 }
 
@@ -125,37 +152,75 @@ impl<'c> Device<'c> {
     }
 
     /// Generic call helper.
-    pub fn call<R>(&self, method: &str, args: &(impl Serialize + Type)) -> zbus::Result<R>
+    pub fn call<R>(
+        &self,
+        method: &str,
+        args: &(impl Serialize + Type + std::fmt::Debug),
+    ) -> zbus::Result<R>
     where
         R: DeserializeOwned + Type,
     {
-        self.proxy()?.call(method, args)
+        let proxy = self.proxy()?;
+        let path = self.object_path.as_str();
+
+        println!("[fprintd][Device {}] call {}({:?})", path, method, args);
+        let result = proxy.call(method, args);
+        if let Err(ref e) = result {
+            println!("[fprintd][Device {}] {}() error: {}", path, method, e);
+        }
+        result
     }
 
     /// Generic call helper with timeout override.
     pub fn call_with_timeout<R>(
         &self,
         method: &str,
-        args: &(impl Serialize + Type),
+        args: &(impl Serialize + Type + std::fmt::Debug),
         timeout: Option<Duration>,
     ) -> zbus::Result<R>
     where
         R: DeserializeOwned + Type,
     {
-        self.proxy_with_timeout(timeout)?.call(method, args)
+        let proxy = self.proxy_with_timeout(timeout)?;
+        let path = self.object_path.as_str();
+        println!(
+            "[fprintd][Device {}] call {}({:?}) with timeout {:?}",
+            path, method, args, timeout
+        );
+        let result = proxy.call(method, args);
+        if let Err(ref e) = result {
+            println!("[fprintd][Device {}] {}() error: {}", path, method, e);
+        }
+        result
     }
 
-    /// List enrolled fingers for the current user.
-    /// Maps to Device.ListEnrolledFingers() -> as.
-    pub fn list_enrolled_fingers(&self) -> zbus::Result<Vec<String>> {
-        let (fingers,): (Vec<String>,) = self.call("ListEnrolledFingers", &())?;
+    /// List enrolled fingers for a user (use "" for current user).
+    /// Maps to Device.ListEnrolledFingers(s) -> as.
+    pub fn list_enrolled_fingers(&self, username: &str) -> zbus::Result<Vec<String>> {
+        let (fingers,): (Vec<String>,) = self.call("ListEnrolledFingers", &(username,))?;
         Ok(fingers)
     }
 
-    /// Delete all enrolled fingers for the current user.
-    /// Maps to Device.DeleteEnrolledFingers() -> ().
+    /// Delete all enrolled fingers for the user currently claiming the device.
+    /// Maps to Device.DeleteEnrolledFingers2() -> () (requires Device.Claim).
     pub fn delete_enrolled_fingers(&self) -> zbus::Result<()> {
-        let _: () = self.call("DeleteEnrolledFingers", &())?;
+        let _: () = self.call("DeleteEnrolledFingers2", &())?;
+        Ok(())
+    }
+
+    /// Delete all enrolled fingers for a specific user (legacy helper).
+    /// Maps to Device.DeleteEnrolledFingers(s) -> ().
+    ///
+    /// Note: Prefer claiming the device and using DeleteEnrolledFingers2.
+    pub fn delete_enrolled_fingers_for_user(&self, username: &str) -> zbus::Result<()> {
+        let _: () = self.call("DeleteEnrolledFingers", &(username,))?;
+        Ok(())
+    }
+
+    /// Delete a single enrolled finger for the user currently claiming the device.
+    /// Maps to Device.DeleteEnrolledFinger(s) -> () (requires Device.Claim).
+    pub fn delete_enrolled_finger(&self, finger: &str) -> zbus::Result<()> {
+        let _: () = self.call("DeleteEnrolledFinger", &(finger,))?;
         Ok(())
     }
 
@@ -173,10 +238,10 @@ impl<'c> Device<'c> {
         Ok(())
     }
 
-    /// Start verification.
-    /// Maps to Device.VerifyStart() -> ().
-    pub fn verify_start(&self) -> zbus::Result<()> {
-        let _: () = self.call("VerifyStart", &())?;
+    /// Start verification for a finger (e.g. "any" or a specific finger).
+    /// Maps to Device.VerifyStart(s) -> ().
+    pub fn verify_start(&self, finger: &str) -> zbus::Result<()> {
+        let _: () = self.call("VerifyStart", &(finger,))?;
         Ok(())
     }
 
@@ -187,9 +252,9 @@ impl<'c> Device<'c> {
         Ok(())
     }
 
-    /// Claim the device (if supported).
-    pub fn claim(&self) -> zbus::Result<()> {
-        let _: () = self.call("Claim", &())?;
+    /// Claim the device for a user (use "" for current user).
+    pub fn claim(&self, username: &str) -> zbus::Result<()> {
+        let _: () = self.call("Claim", &(username,))?;
         Ok(())
     }
 
@@ -198,6 +263,38 @@ impl<'c> Device<'c> {
         let _: () = self.call("Release", &())?;
         Ok(())
     }
+
+    /// Get the device product name. Property: name (s).
+    pub fn name(&self) -> zbus::Result<String> {
+        let proxy = self.proxy()?;
+        proxy.get_property("name")
+    }
+
+    /// Get the number of enrollment stages. Property: num-enroll-stages (i).
+    ///
+    /// Note: This is only defined when the device has been claimed; otherwise it may be -1.
+    pub fn num_enroll_stages(&self) -> zbus::Result<i32> {
+        let proxy = self.proxy()?;
+        proxy.get_property("num-enroll-stages")
+    }
+
+    /// Get the device scan type ("press" or "swipe"). Property: scan-type (s).
+    pub fn scan_type(&self) -> zbus::Result<String> {
+        let proxy = self.proxy()?;
+        proxy.get_property("scan-type")
+    }
+
+    /// Whether a finger is currently present on the sensor. Property: finger-present (b).
+    pub fn finger_present(&self) -> zbus::Result<bool> {
+        let proxy = self.proxy()?;
+        proxy.get_property("finger-present")
+    }
+
+    /// Whether the sensor is waiting for a finger. Property: finger-needed (b).
+    pub fn finger_needed(&self) -> zbus::Result<bool> {
+        let proxy = self.proxy()?;
+        proxy.get_property("finger-needed")
+    }
 }
 
 /// High-level utility: Find the first available Device helper.
@@ -205,6 +302,9 @@ impl<'c> Device<'c> {
 /// Returns `None` if no devices are present or if a call fails.
 pub fn first_device(client: &Client) -> Option<Device<'_>> {
     let mgr = client.manager();
+    if let Ok(path) = mgr.get_default_device() {
+        return Some(client.device(path));
+    }
     let paths = mgr.get_devices().ok()?;
     let path = paths.first()?;
     Some(client.device((*path).clone()))

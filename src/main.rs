@@ -1,59 +1,165 @@
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider, FlowBox,
-    Image, Label, Orientation, Stack, Switch, gio,
+    Image, Label, Orientation, Stack, Switch, TextView, gio,
 };
 
 use std::collections::HashSet;
-use std::process::Command;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, TryRecvError};
+use std::time::Duration;
 
 mod fprintd;
 mod pam_config;
 use pam_config::PamConfig;
 
-fn run_enroll_in_terminal(finger: &str) {
+fn run_enroll_in_textview(text_view: &TextView, finger: &str) {
     let cmd = format!("fprintd-enroll -f {}", finger);
 
-    let result = Command::new("konsole")
-        .args(["--noclose", "-e", "bash", "-c", &cmd])
-        .spawn();
+    // Clear and print the command at the top
+    let buffer = text_view.buffer();
+    buffer.set_text("");
+    let mut iter = buffer.end_iter();
+    buffer.insert(&mut iter, &format!("$ {}\n\n", cmd));
+    // Auto-scroll to bottom
+    let mut end_scroll = buffer.end_iter();
+    text_view.scroll_to_iter(&mut end_scroll, 0.0, false, 0.0, 1.0);
 
-    if result.is_err() {
-        let _ = Command::new("cosmic-term")
-            .args(["-e", "bash", "-c", &cmd])
-            .spawn();
+    // Channel to send process output back to the UI thread
+    let (tx, rx) = mpsc::channel::<String>();
+
+    // UI updater: poll the channel regularly on the main thread
+    let tv = text_view.clone();
+    gtk4::glib::timeout_add_local(Duration::from_millis(100), move || {
+        loop {
+            match rx.try_recv() {
+                Ok(line) => {
+                    let buffer = tv.buffer();
+                    let mut iter = buffer.end_iter();
+                    buffer.insert(&mut iter, &line);
+                    // Auto-scroll to bottom
+                    let mut end_scroll = buffer.end_iter();
+                    tv.scroll_to_iter(&mut end_scroll, 0.0, false, 0.0, 1.0);
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return gtk4::glib::ControlFlow::Break,
+            }
+        }
+        gtk4::glib::ControlFlow::Continue
+    });
+
+    // Spawn the process with piped stdout and stderr
+    let mut child = match Command::new("bash")
+        .arg("-c")
+        .arg(&cmd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(format!("Failed to start process: {}\n", e));
+            return;
+        }
+    };
+
+    // Pump stdout
+    if let Some(stdout) = child.stdout.take() {
+        let tx_out = tx.clone();
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                let line = line.unwrap_or_default();
+                let _ = tx_out.send(format!("{}\n", line));
+            }
+        });
     }
+
+    // Pump stderr
+    if let Some(stderr) = child.stderr.take() {
+        let tx_err = tx.clone();
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                let line = line.unwrap_or_default();
+                let _ = tx_err.send(format!("{}\n", line));
+            }
+        });
+    }
+
+    // Wait for completion and notify
+    std::thread::spawn(move || {
+        let status = child.wait();
+        let msg = match status {
+            Ok(s) if s.success() => "\nEnrollment finished.\n".to_string(),
+            Ok(s) => format!("\nProcess exited with code: {:?}\n", s.code()),
+            Err(e) => format!("\nFailed to wait for process: {}\n", e),
+        };
+        let _ = tx.send(msg);
+        // When this thread ends and all senders drop, the UI timeout will stop automatically.
+    });
 }
 
 fn scan_enrolled() -> HashSet<String> {
     println!("[fprintd] Scanning for enrolled fingers...");
     let mut s = HashSet::new();
-    if let Ok(client) = fprintd::Client::system() {
-        println!("[fprintd] Connected to system bus. Querying Manager...");
-        let mgr = client.manager();
-        if let Ok(paths) = mgr.get_devices() {
-            println!("[fprintd] Found {} device(s).", paths.len());
-            if let Some(path) = paths.first() {
-                println!("[fprintd] Using device: {}", path.as_str());
-                let dev = client.device((*path).clone());
-                if let Ok(list) = dev.list_enrolled_fingers() {
-                    println!("[fprintd] Enrolled fingers reported: {:?}", list);
-                    for f in list {
-                        s.insert(f.clone());
-                        if let Some(stripped) = f.strip_suffix("-finger") {
-                            s.insert(stripped.to_string());
+
+    match fprintd::Client::system() {
+        Ok(client) => {
+            println!("[fprintd] Connected to system bus. Querying Manager...");
+            let mgr = client.manager();
+            match mgr.get_devices() {
+                Ok(paths) => {
+                    println!("[fprintd] Found {} device(s).", paths.len());
+                    if let Some(path) = paths.first() {
+                        println!("[fprintd] Using device: {}", path.as_str());
+                        let dev = client.device((*path).clone());
+
+                        // Try to claim before querying, then release afterwards
+                        let username = std::env::var("USER").unwrap_or_else(|_| String::from(""));
+                        if let Err(e) = dev.claim(&username) {
+                            println!("[fprintd][warn] Claim failed for '{}': {e}", username);
                         }
+
+                        match dev.list_enrolled_fingers(&username) {
+                            Ok(list) => {
+                                println!("[fprintd] Enrolled fingers reported: {:?}", list);
+                                for f in list {
+                                    s.insert(f.clone());
+                                    if let Some(stripped) = f.strip_suffix("-finger") {
+                                        s.insert(stripped.to_string());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("[fprintd][error] ListEnrolledFingers failed: {e}");
+                            }
+                        }
+
+                        if let Err(e) = dev.release() {
+                            println!("[fprintd][warn] Release failed: {e}");
+                        }
+                    } else {
+                        println!("[fprintd][warn] No devices available");
                     }
+                }
+                Err(e) => {
+                    println!("[fprintd][error] GetDevices failed: {e}");
                 }
             }
         }
+        Err(e) => {
+            println!("[fprintd][error] Failed to connect to system bus: {e}");
+        }
     }
+
     s
 }
 
 fn populate_fingers(
     fingers_flow: &FlowBox,
-    stack: &Stack,
+    terminal_view: &TextView,
     sw_login: &Switch,
     sw_term: &Switch,
     sw_prompt: &Switch,
@@ -83,7 +189,7 @@ fn populate_fingers(
 
         let btn_box = GtkBox::new(Orientation::Vertical, 4);
 
-        let icon = Image::from_icon_name("dialog-password-symbolic");
+        let icon = Image::from_icon_name("fingerprint");
         icon.set_pixel_size(32);
         icon.set_halign(Align::Center);
 
@@ -102,19 +208,18 @@ fn populate_fingers(
             event_btn.add_css_class("finger-enrolled");
         }
 
-        let stack_nav = stack.clone();
         let sw_login_c = sw_login.clone();
         let sw_term_c = sw_term.clone();
         let sw_prompt_c = sw_prompt.clone();
+        let term_view_c = terminal_view.clone();
         let finger_clone = finger_string.clone();
         let btn_for_css = event_btn.clone();
         event_btn.connect_clicked(move |_| {
-            run_enroll_in_terminal(&finger_clone);
+            run_enroll_in_textview(&term_view_c, &finger_clone);
             sw_login_c.set_sensitive(true);
             sw_term_c.set_sensitive(true);
             sw_prompt_c.set_sensitive(true);
             btn_for_css.add_css_class("finger-enrolled");
-            stack_nav.set_visible_child_name("main");
         });
 
         fingers_flow.append(&event_btn);
@@ -233,10 +338,13 @@ fn main() {
             let sw_term_c = sw_term.clone();
             let sw_prompt_c = sw_prompt.clone();
             enroll_btn.connect_clicked(move |_| {
-                if let Some(fingers_flow) = builder_c.object::<FlowBox>("fingers_flow") {
+                if let (Some(fingers_flow), Some(terminal_view)) = (
+                    builder_c.object::<FlowBox>("fingers_flow"),
+                    builder_c.object::<TextView>("terminal_view"),
+                ) {
                     populate_fingers(
                         &fingers_flow,
-                        &stack_nav,
+                        &terminal_view,
                         &sw_login_c,
                         &sw_term_c,
                         &sw_prompt_c,
@@ -256,9 +364,18 @@ fn main() {
         let fingers_flow: FlowBox = builder
             .object("fingers_flow")
             .expect("Failed to get fingers_flow");
+        let terminal_view: TextView = builder
+            .object("terminal_view")
+            .expect("Failed to get terminal_view");
 
         // Populate buttons based on current enrollment
-        populate_fingers(&fingers_flow, &stack, &sw_login, &sw_term, &sw_prompt);
+        populate_fingers(
+            &fingers_flow,
+            &terminal_view,
+            &sw_login,
+            &sw_term,
+            &sw_prompt,
+        );
 
         stack.set_visible_child_name("main");
 

@@ -6,8 +6,8 @@
   <!-- Main application window -->
   <object class="GtkApplicationWindow" id="app_window">
     <property name="title">Fingerprint GUI</property>
-    <property name="default-width">560</property>
-    <property name="default-height">420</property>
+    <property name="default-width">650</property>
+    <property name="default-height">650</property>
 
     <child>
       <!-- Central stack with two views: "main" and "enroll" -->
@@ -29,51 +29,63 @@
                 <property name="margin-start">30</property>
                 <property name="margin-end">30</property>
 
-                <!-- Title -->
                 <child>
-                  <object class="GtkLabel" id="main_title">
-                    <property name="label">Fingerprint Authentication</property>
-                    <property name="halign">center</property>
-                    <style>
-                      <class name="title-1" />
-                    </style>
-                  </object>
-                </child>
+                  <object class="GtkBox" id="main_center_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">15</property>
+                    <property name="vexpand">true</property>
+                    <property name="valign">center</property>
 
-                <!-- Icon -->
-                <child>
-                  <object class="GtkImage" id="main_icon">
-                    <property
-                                            name="icon-name"
-                                        >dialog-password-symbolic</property>
-                    <property name="pixel-size">48</property>
-                    <property name="halign">center</property>
-                  </object>
-                </child>
+                    <!-- Title -->
+                    <child>
+                      <object class="GtkLabel" id="main_title">
+                        <property
+                                                    name="label"
+                                                >Fingerprint Authentication</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="title-1" />
+                        </style>
+                      </object>
+                    </child>
 
-                <!-- Description -->
-                <child>
-                  <object class="GtkLabel" id="main_desc">
-                    <property
-                                            name="label"
-                                        >Manage fingerprint authentication on your system, including enrollment and enabling fingerprint login, terminal use, and system prompts.</property>
-                    <property name="wrap">true</property>
-                    <property name="justify">center</property>
-                    <property name="halign">center</property>
-                    <property name="margin-bottom">10</property>
-                  </object>
-                </child>
+                    <!-- Icon -->
+                    <child>
+                      <object class="GtkImage" id="main_icon">
+                        <property
+                                                    name="resource"
+                                                >/xyz/xerolinux/fp_gui/icons/hicolor/scalable/apps/fingerprint.png</property>
+                        <property name="pixel-size">48</property>
+                        <property name="halign">center</property>
+                      </object>
+                    </child>
 
-                <!-- Enroll button -->
-                <child>
-                  <object class="GtkButton" id="enroll_btn">
-                    <property name="label">Enroll Fingerprint</property>
-                    <property name="halign">center</property>
-                    <property name="width-request">180</property>
-                    <property name="height-request">36</property>
-                    <style>
-                      <class name="suggested-action" />
-                    </style>
+                    <!-- Description -->
+                    <child>
+                      <object class="GtkLabel" id="main_desc">
+                        <property
+                                                    name="label"
+                                                >Manage fingerprint authentication on your system, including enrollment and enabling fingerprint login, terminal use, and system prompts.</property>
+                        <property name="wrap">true</property>
+                        <property name="justify">center</property>
+                        <property name="halign">center</property>
+                        <property name="margin-bottom">10</property>
+                      </object>
+                    </child>
+
+                    <!-- Enroll button -->
+                    <child>
+                      <object class="GtkButton" id="enroll_btn">
+                        <property name="label">Enroll Fingerprint</property>
+                        <property name="halign">center</property>
+                        <property name="width-request">180</property>
+                        <property name="height-request">36</property>
+                        <style>
+                          <class name="suggested-action" />
+                        </style>
+                      </object>
+                    </child>
+
                   </object>
                 </child>
 
@@ -336,6 +348,35 @@
                     <property name="max-children-per-line">5</property>
                     <property name="row-spacing">20</property>
                     <property name="column-spacing">20</property>
+                  </object>
+                </child>
+                <!-- Terminal-like output area -->
+                <child>
+                  <object class="GtkFrame" id="terminal_frame">
+                    <property name="label">Enrollment Output</property>
+                    <property name="label-xalign">0</property>
+                    <property name="margin-top">10</property>
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <child>
+                      <object class="GtkScrolledWindow" id="terminal_scroller">
+                        <property name="hexpand">true</property>
+                        <property name="vexpand">true</property>
+                        <property name="min-content-height">120</property>
+                        <child>
+                          <object class="GtkTextView" id="terminal_view">
+                            <property name="editable">false</property>
+                            <property name="wrap-mode">char</property>
+                            <property name="monospace">true</property>
+                            <property name="cursor-visible">false</property>
+                            <property name="left-margin">6</property>
+                            <property name="right-margin">6</property>
+                            <property name="top-margin">6</property>
+                            <property name="bottom-margin">6</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

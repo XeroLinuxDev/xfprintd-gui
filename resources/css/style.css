@@ -42,11 +42,12 @@ GtkListBoxRow {
 /* Enrolled finger button styling */
 button.finger-enrolled,
 .finger-enrolled {
-    background-color: alpha(currentColor, 0.08);
-    border-radius: 8px;
+    background-color: alpha(currentColor, 0.22);
+    border-color: alpha(currentColor, 0.35);
 }
 
 button.finger-enrolled:hover,
 .finger-enrolled:hover {
-    background-color: alpha(currentColor, 0.12);
+    background-color: alpha(currentColor, 0.3);
+    border-color: alpha(currentColor, 0.45);
 }
