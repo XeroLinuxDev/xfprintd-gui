@@ -7,14 +7,12 @@ label.toggle-title {
     font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: 0.1px;
-    text-align: left;
 }
 
 label.toggle-hint {
     font-size: 0.85rem;
     color: alpha(currentColor, 0.7);
     margin-top: 2px;
-    text-align: left;
 }
 
 #lbl_login_title,
@@ -23,7 +21,6 @@ label.toggle-hint {
     font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: 0.1px;
-    text-align: left;
 }
 
 #lbl_login_hint,
@@ -32,7 +29,6 @@ label.toggle-hint {
     font-size: 0.85rem;
     color: alpha(currentColor, 0.7);
     margin-top: 2px;
-    text-align: left;
 }
 
 GtkListBoxRow {
