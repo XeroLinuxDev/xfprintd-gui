@@ -1,27 +1,15 @@
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider, FlowBox,
-    Image, Label, Orientation, Stack, StyleContext, Switch, gio,
+    Image, Label, Orientation, Stack, Switch, gio,
 };
-use std::cell::RefCell;
-use std::process::Command;
-use std::rc::Rc;
 
+use std::collections::HashSet;
+use std::process::Command;
+
+mod fprintd;
 mod pam_config;
 use pam_config::PamConfig;
-
-#[derive(Clone, Copy, PartialEq)]
-enum FingerprintState {
-    None,
-    Enrolled,
-}
-
-struct AppState {
-    fp_state: FingerprintState,
-    sw_login: Switch,
-    sw_term: Switch,
-    sw_prompt: Switch,
-}
 
 fn run_enroll_in_terminal(finger: &str) {
     let cmd = format!("fprintd-enroll -f {}", finger);
@@ -34,6 +22,102 @@ fn run_enroll_in_terminal(finger: &str) {
         let _ = Command::new("cosmic-term")
             .args(["-e", "bash", "-c", &cmd])
             .spawn();
+    }
+}
+
+fn scan_enrolled() -> HashSet<String> {
+    println!("[fprintd] Scanning for enrolled fingers...");
+    let mut s = HashSet::new();
+    if let Ok(client) = fprintd::Client::system() {
+        println!("[fprintd] Connected to system bus. Querying Manager...");
+        let mgr = client.manager();
+        if let Ok(paths) = mgr.get_devices() {
+            println!("[fprintd] Found {} device(s).", paths.len());
+            if let Some(path) = paths.first() {
+                println!("[fprintd] Using device: {}", path.as_str());
+                let dev = client.device((*path).clone());
+                if let Ok(list) = dev.list_enrolled_fingers() {
+                    println!("[fprintd] Enrolled fingers reported: {:?}", list);
+                    for f in list {
+                        s.insert(f.clone());
+                        if let Some(stripped) = f.strip_suffix("-finger") {
+                            s.insert(stripped.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    s
+}
+
+fn populate_fingers(
+    fingers_flow: &FlowBox,
+    stack: &Stack,
+    sw_login: &Switch,
+    sw_term: &Switch,
+    sw_prompt: &Switch,
+) {
+    // Clear existing children
+    while let Some(child) = fingers_flow.first_child() {
+        fingers_flow.remove(&child);
+    }
+
+    let fingers = vec![
+        "left-thumb",
+        "left-index",
+        "left-middle",
+        "left-ring",
+        "left-little",
+        "right-thumb",
+        "right-index",
+        "right-middle",
+        "right-ring",
+        "right-little",
+    ];
+
+    let enrolled = scan_enrolled();
+
+    for finger in fingers {
+        let finger_string = finger.to_string();
+
+        let btn_box = GtkBox::new(Orientation::Vertical, 4);
+
+        let icon = Image::from_icon_name("dialog-password-symbolic");
+        icon.set_pixel_size(32);
+        icon.set_halign(Align::Center);
+
+        let label = Label::new(Some(&finger_string.replace('-', " ")));
+        label.set_halign(Align::Center);
+
+        btn_box.append(&icon);
+        btn_box.append(&label);
+
+        let event_btn = Button::new();
+        event_btn.set_child(Some(&btn_box));
+        // Color already-enrolled fingers
+        if enrolled.contains(&finger_string)
+            || enrolled.contains(&format!("{}-finger", finger_string))
+        {
+            event_btn.add_css_class("finger-enrolled");
+        }
+
+        let stack_nav = stack.clone();
+        let sw_login_c = sw_login.clone();
+        let sw_term_c = sw_term.clone();
+        let sw_prompt_c = sw_prompt.clone();
+        let finger_clone = finger_string.clone();
+        let btn_for_css = event_btn.clone();
+        event_btn.connect_clicked(move |_| {
+            run_enroll_in_terminal(&finger_clone);
+            sw_login_c.set_sensitive(true);
+            sw_term_c.set_sensitive(true);
+            sw_prompt_c.set_sensitive(true);
+            btn_for_css.add_css_class("finger-enrolled");
+            stack_nav.set_visible_child_name("main");
+        });
+
+        fingers_flow.append(&event_btn);
     }
 }
 
@@ -53,21 +137,12 @@ fn main() {
             // Load application CSS from gresource
             let css_provider = CssProvider::new();
             css_provider.load_from_resource("/xyz/xerolinux/fp_gui/css/style.css");
-            gtk4::StyleContext::add_provider_for_display(
+            gtk4::style_context_add_provider_for_display(
                 &display,
                 &css_provider,
                 gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
         }
-
-        // App-wide state
-        let dummy_switch = Switch::new();
-        let app_state = Rc::new(RefCell::new(AppState {
-            fp_state: FingerprintState::None,
-            sw_login: dummy_switch.clone(),
-            sw_term: dummy_switch.clone(),
-            sw_prompt: dummy_switch.clone(),
-        }));
 
         // Load UI from embedded GtkBuilder XML
         let builder = Builder::from_resource("/xyz/xerolinux/fp_gui/ui/main.ui");
@@ -117,9 +192,9 @@ fn main() {
                     PamConfig::remove_patch("/etc/pam.d/login")
                 };
                 if res.is_err() {
-                    return gtk4::glib::signal::Inhibit(true);
+                    return gtk4::glib::Propagation::Stop;
                 }
-                gtk4::glib::signal::Inhibit(false)
+                gtk4::glib::Propagation::Proceed
             });
         }
         {
@@ -130,9 +205,9 @@ fn main() {
                     PamConfig::remove_patch("/etc/pam.d/sudo")
                 };
                 if res.is_err() {
-                    return gtk4::glib::signal::Inhibit(true);
+                    return gtk4::glib::Propagation::Stop;
                 }
-                gtk4::glib::signal::Inhibit(false)
+                gtk4::glib::Propagation::Proceed
             });
         }
         {
@@ -144,24 +219,29 @@ fn main() {
                     PamConfig::remove_patch("/etc/pam.d/polkit-1")
                 };
                 if res.is_err() {
-                    return gtk4::glib::signal::Inhibit(true);
+                    return gtk4::glib::Propagation::Stop;
                 }
-                gtk4::glib::signal::Inhibit(false)
+                gtk4::glib::Propagation::Proceed
             });
-        }
-
-        // Store switches in app state for later updates
-        {
-            let mut st = app_state.borrow_mut();
-            st.sw_login = sw_login.clone();
-            st.sw_term = sw_term.clone();
-            st.sw_prompt = sw_prompt.clone();
         }
 
         // Navigation
         {
+            let builder_c = builder.clone();
             let stack_nav = stack.clone();
+            let sw_login_c = sw_login.clone();
+            let sw_term_c = sw_term.clone();
+            let sw_prompt_c = sw_prompt.clone();
             enroll_btn.connect_clicked(move |_| {
+                if let Some(fingers_flow) = builder_c.object::<FlowBox>("fingers_flow") {
+                    populate_fingers(
+                        &fingers_flow,
+                        &stack_nav,
+                        &sw_login_c,
+                        &sw_term_c,
+                        &sw_prompt_c,
+                    );
+                }
                 stack_nav.set_visible_child_name("enroll");
             });
         }
@@ -177,54 +257,8 @@ fn main() {
             .object("fingers_flow")
             .expect("Failed to get fingers_flow");
 
-        let fingers = vec![
-            "left-thumb",
-            "left-index",
-            "left-middle",
-            "left-ring",
-            "left-little",
-            "right-thumb",
-            "right-index",
-            "right-middle",
-            "right-ring",
-            "right-little",
-        ];
-
-        for finger in fingers {
-            let finger_string = finger.to_string();
-
-            let btn_box = GtkBox::new(Orientation::Vertical, 4);
-
-            let icon = Image::from_icon_name("dialog-password-symbolic");
-            icon.set_pixel_size(32);
-            icon.set_halign(Align::Center);
-
-            let label = Label::new(Some(&finger_string.replace('-', " ")));
-            label.set_halign(Align::Center);
-
-            btn_box.append(&icon);
-            btn_box.append(&label);
-
-            let event_btn = Button::new();
-            event_btn.set_child(Some(&btn_box));
-
-            {
-                let app_state = app_state.clone();
-                let stack_nav = stack.clone();
-                let finger_clone = finger_string.clone();
-                event_btn.connect_clicked(move |_| {
-                    run_enroll_in_terminal(&finger_clone);
-                    let mut state = app_state.borrow_mut();
-                    state.fp_state = FingerprintState::Enrolled;
-                    state.sw_login.set_sensitive(true);
-                    state.sw_term.set_sensitive(true);
-                    state.sw_prompt.set_sensitive(true);
-                    stack_nav.set_visible_child_name("main");
-                });
-            }
-
-            fingers_flow.append(&event_btn);
-        }
+        // Populate buttons based on current enrollment
+        populate_fingers(&fingers_flow, &stack, &sw_login, &sw_term, &sw_prompt);
 
         stack.set_visible_child_name("main");
 

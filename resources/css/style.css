@@ -42,3 +42,15 @@ GtkListBoxRow {
 .boxed-list {
     padding: 8px 12px;
 }
+
+/* Enrolled finger button styling */
+button.finger-enrolled,
+.finger-enrolled {
+    background-color: alpha(currentColor, 0.08);
+    border-radius: 8px;
+}
+
+button.finger-enrolled:hover,
+.finger-enrolled:hover {
+    background-color: alpha(currentColor, 0.12);
+}

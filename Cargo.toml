@@ -5,8 +5,12 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-gtk4 = { version = "0.6", features = ["v4_6"] }
+gtk4 = { version = "0.10", features = ["v4_6"] }
 once_cell = "1.21.3"
+zbus = { version = "5", features = ["blocking"] }
+zbus_macros = "5"
+zvariant = "5"
+serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 glib-build-tools = "0.21"
