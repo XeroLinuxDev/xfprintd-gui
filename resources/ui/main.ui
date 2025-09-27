@@ -94,7 +94,7 @@
                 <child>
                   <object class="GtkListBox" id="switches_list">
                     <property name="selection-mode">none</property>
-                    <property name="margin-top">8</property>
+                    <property name="show-separators">false</property>
                     <property name="hexpand">true</property>
                     <property name="vexpand">true</property>
                     <property name="valign">end</property>
@@ -127,11 +127,26 @@
                       </object>
                     </child>
 
+
+                    <child>
+                      <object class="GtkListBoxRow">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
+                        <child>
+                          <object class="GtkSeparator">
+                            <property name="orientation">horizontal</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                     <!-- Login row -->
                     <child>
                       <object class="GtkListBoxRow" id="row_login">
                         <property name="selectable">false</property>
                         <property name="activatable">false</property>
+
                         <child>
                           <object class="GtkBox">
                             <property name="orientation">horizontal</property>
@@ -141,6 +156,8 @@
                               <object class="GtkBox" id="login_text_box">
                                 <property name="orientation">vertical</property>
                                 <property name="hexpand">true</property>
+                                <property name="halign">fill</property>
+                                <property name="valign">fill</property>
                                 <child>
                                   <object class="GtkLabel" id="lbl_login_title">
                                     <property
@@ -162,6 +179,7 @@
                                     <property name="wrap">true</property>
                                     <property name="halign">start</property>
                                     <property name="xalign">0</property>
+
                                     <style>
                                       <class name="toggle-hint" />
                                     </style>
@@ -180,11 +198,26 @@
                       </object>
                     </child>
 
+
+                    <child>
+                      <object class="GtkListBoxRow">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
+                        <child>
+                          <object class="GtkSeparator">
+                            <property name="orientation">horizontal</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                     <!-- Terminal row -->
                     <child>
                       <object class="GtkListBoxRow" id="row_term">
                         <property name="selectable">false</property>
                         <property name="activatable">false</property>
+
                         <child>
                           <object class="GtkBox">
                             <property name="orientation">horizontal</property>
@@ -194,6 +227,8 @@
                               <object class="GtkBox" id="term_text_box">
                                 <property name="orientation">vertical</property>
                                 <property name="hexpand">true</property>
+                                <property name="halign">fill</property>
+                                <property name="valign">fill</property>
                                 <child>
                                   <object class="GtkLabel" id="lbl_term_title">
                                     <property
@@ -233,11 +268,26 @@
                       </object>
                     </child>
 
+
+                    <child>
+                      <object class="GtkListBoxRow">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
+                        <child>
+                          <object class="GtkSeparator">
+                            <property name="orientation">horizontal</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                     <!-- System prompt row -->
                     <child>
                       <object class="GtkListBoxRow" id="row_prompt">
                         <property name="selectable">false</property>
                         <property name="activatable">false</property>
+
                         <child>
                           <object class="GtkBox">
                             <property name="orientation">horizontal</property>
@@ -247,6 +297,8 @@
                               <object class="GtkBox" id="prompt_text_box">
                                 <property name="orientation">vertical</property>
                                 <property name="hexpand">true</property>
+                                <property name="halign">fill</property>
+                                <property name="valign">fill</property>
                                 <child>
                                   <object
                                                                         class="GtkLabel"
@@ -257,6 +309,7 @@
                                                                         >Enable Authentication in System Prompt</property>
                                     <property name="halign">start</property>
                                     <property name="xalign">0</property>
+                                    <property name="margin-top">6</property>
                                     <style>
                                       <class name="toggle-title" />
                                     </style>
@@ -271,6 +324,7 @@
                                     <property name="wrap">true</property>
                                     <property name="halign">start</property>
                                     <property name="xalign">0</property>
+                                    <property name="margin-bottom">6</property>
                                     <style>
                                       <class name="toggle-hint" />
                                     </style>
@@ -336,7 +390,7 @@
                     <property name="wrap">true</property>
                     <property name="justify">center</property>
                     <property name="halign">center</property>
-                    <property name="margin-bottom">12</property>
+                    <property name="margin-bottom">0</property>
                   </object>
                 </child>
 
@@ -344,7 +398,8 @@
                 <child>
                   <object class="GtkFlowBox" id="fingers_flow">
                     <property name="selection-mode">none</property>
-                    <property name="halign">center</property>
+                    <property name="halign">fill</property>
+                    <property name="hexpand">true</property>
                     <property name="max-children-per-line">5</property>
                     <property name="row-spacing">20</property>
                     <property name="column-spacing">20</property>
@@ -357,11 +412,13 @@
                     <property name="label">Enrollment Output</property>
                     <property name="label-xalign">0</property>
                     <property name="margin-top">10</property>
+                    <property name="halign">fill</property>
                     <property name="hexpand">true</property>
                     <property name="vexpand">true</property>
                     <child>
                       <object class="GtkScrolledWindow" id="terminal_scroller">
                         <property name="hexpand">true</property>
+                        <property name="halign">fill</property>
                         <property name="vexpand">true</property>
                         <property name="min-content-height">120</property>
                         <child>

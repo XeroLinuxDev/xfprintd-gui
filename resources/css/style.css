@@ -1,7 +1,6 @@
 label.section-title {
     font-size: 1.25rem;
     font-weight: 600;
-    padding-bottom: 8px;
 }
 label.toggle-title {
     font-size: 0.95rem;
@@ -12,7 +11,6 @@ label.toggle-title {
 label.toggle-hint {
     font-size: 0.85rem;
     color: alpha(currentColor, 0.7);
-    margin-top: 2px;
 }
 
 #lbl_login_title,
@@ -28,15 +26,23 @@ label.toggle-hint {
 #lbl_prompt_hint {
     font-size: 0.85rem;
     color: alpha(currentColor, 0.7);
-    margin-top: 2px;
 }
 
-GtkListBoxRow {
-    padding: 10px 16px;
+.boxed-list row {
+    border: none;
 }
 
 .boxed-list {
     padding: 8px 12px;
+}
+
+/* Style separators inside boxed lists to draw a single thin line */
+.boxed-list separator {
+    min-height: 1px;
+    background-color: alpha(currentColor, 0.12);
+    background-image: none;
+    box-shadow: none;
+    border: none;
 }
 
 /* Enrolled finger button styling */
