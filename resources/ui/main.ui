@@ -6,7 +6,7 @@
   <!-- Main application window -->
   <object class="GtkApplicationWindow" id="app_window">
     <property name="title">Fingerprint GUI</property>
-    <property name="default-width">650</property>
+    <property name="default-width">700</property>
     <property name="default-height">650</property>
 
     <child>
@@ -348,6 +348,7 @@
                     <property name="max-children-per-line">5</property>
                     <property name="row-spacing">20</property>
                     <property name="column-spacing">20</property>
+                    <property name="homogeneous">true</property>
                   </object>
                 </child>
                 <!-- Terminal-like output area -->
