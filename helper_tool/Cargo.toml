@@ -1,0 +1,9 @@
+[package]
+name = "fingerprint-gui-helper"
+version.workspace = true
+edition = "2021"
+description = "Privileged helper to apply/remove/check fingerprint PAM configurations"
+
+[dependencies]
+libc = "0.2"
+clap = { version = "4", features = ["derive"] }

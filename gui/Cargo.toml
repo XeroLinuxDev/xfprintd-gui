@@ -1,0 +1,18 @@
+[package]
+name = "fingerprint_gui"
+version.workspace = true
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+gtk4 = { version = "0.10", features = ["v4_6"] }
+once_cell = "1.21.3"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+zbus_macros = "5"
+zvariant = "5"
+serde = { version = "1", features = ["derive"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+[build-dependencies]
+glib-build-tools = "0.21"

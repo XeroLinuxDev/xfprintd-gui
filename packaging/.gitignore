@@ -1,0 +1,27 @@
+# Ignore all makepkg generated files and directories
+
+# Source directory created during build
+src/
+
+# Package directory created during build
+pkg/
+
+# Built package files
+*.pkg.tar.xz
+*.pkg.tar.zst
+*.pkg.tar.gz
+
+# Namcap log files
+*.log
+
+# Temporary files
+*.tmp
+*~
+
+# Debug packages
+*-debug-*.pkg.tar.*
+
+# Source packages
+*.src.tar.gz
+*.src.tar.xz
+*.src.tar.zst

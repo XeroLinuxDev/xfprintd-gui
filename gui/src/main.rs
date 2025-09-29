@@ -1,21 +1,20 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider, FlowBox,
-    Image, Label, Orientation, Stack, Switch, gio,
+    gio, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
+    FlowBox, Image, Label, Orientation, Stack, Switch,
 };
 
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
-use std::time::Duration;
+use std::sync::Arc;
 
 mod fprintd;
-mod pam_config;
-use pam_config::PamConfig;
+mod pam_helper;
+use pam_helper::PamHelper;
 use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 fn display_finger_name(name: &str) -> String {
@@ -137,7 +136,7 @@ fn start_enrollment_ctx(finger_key: String, ctx: UiCtx) {
         let lbl = ctx.action_label.clone();
         let ctx_for_pop = ctx.clone();
 
-        glib::timeout_add_local(Duration::from_millis(100), move || {
+        glib::idle_add_local(move || {
             loop {
                 match rx.try_recv() {
                     Ok(UiEvent::SetText(text)) => {
@@ -248,7 +247,7 @@ fn populate_fingers_async_ctx(ctx: UiCtx) {
         let sw_term_clone = ctx.sw_term.clone();
         let sw_prompt_clone = ctx.sw_prompt.clone();
 
-        glib::timeout_add_local(Duration::from_millis(100), move || match rx.try_recv() {
+        glib::idle_add_local(move || match rx.try_recv() {
             Ok(enrolled) => {
                 let has_any = !enrolled.is_empty();
                 println!(
@@ -398,7 +397,7 @@ fn main() {
 
 
         let (login_configured, sudo_configured, polkit_configured) =
-            PamConfig::check_configurations();
+            PamHelper::check_all_configurations();
         sw_login.set_active(login_configured);
         sw_term.set_active(sudo_configured);
         sw_prompt.set_active(polkit_configured);
@@ -415,7 +414,7 @@ fn main() {
                 let sw_login_c = sw_login.clone();
                 let sw_term_c = sw_term.clone();
                 let sw_prompt_c = sw_prompt.clone();
-                glib::timeout_add_local(Duration::from_millis(100), move || {
+                glib::idle_add_local(move || {
                     match rx.try_recv() {
                         Ok(has_any) => {
                             sw_login_c.set_sensitive(has_any);
@@ -443,9 +442,9 @@ fn main() {
         {
             sw_login.connect_state_set(move |_switch, state| {
                 let res = if state {
-                    PamConfig::apply_patch("/etc/pam.d/login")
+                    PamHelper::apply_login()
                 } else {
-                    PamConfig::remove_patch("/etc/pam.d/login")
+                    PamHelper::remove_login()
                 };
                 if res.is_err() {
                     return gtk4::glib::Propagation::Stop;
@@ -456,9 +455,9 @@ fn main() {
         {
             sw_term.connect_state_set(move |_switch, state| {
                 let res = if state {
-                    PamConfig::apply_patch("/etc/pam.d/sudo")
+                    PamHelper::apply_sudo()
                 } else {
-                    PamConfig::remove_patch("/etc/pam.d/sudo")
+                    PamHelper::remove_sudo()
                 };
                 if res.is_err() {
                     return gtk4::glib::Propagation::Stop;
@@ -469,10 +468,9 @@ fn main() {
         {
             sw_prompt.connect_state_set(move |_switch, state| {
                 let res = if state {
-                    PamConfig::copy_default_polkit()
-                        .and_then(|_| PamConfig::apply_patch("/etc/pam.d/polkit-1"))
+                    PamHelper::apply_polkit()
                 } else {
-                    PamConfig::remove_patch("/etc/pam.d/polkit-1")
+                    PamHelper::remove_polkit()
                 };
                 if res.is_err() {
                     return gtk4::glib::Propagation::Stop;
@@ -581,7 +579,7 @@ fn main() {
                         let selected_c = selected.clone();
                         let finger_label_c2 = finger_label_c2.clone();
                         let rt_ui = rt.clone();
-                        glib::timeout_add_local(Duration::from_millis(100), move || {
+                        glib::idle_add_local(move || {
                             match rx_done.try_recv() {
                                 Ok(res) => {
                                     match res {

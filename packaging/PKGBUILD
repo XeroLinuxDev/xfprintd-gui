@@ -1,0 +1,34 @@
+pkgname=fingerprint-gui
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="GTK4 GUI to manage fingerprint enrollment and PAM integration; includes privileged Polkit helper"
+arch=('x86_64')
+url="https://xerolinux.xyz"
+license=('MIT')
+depends=('gtk4' 'polkit' 'glib2')
+makedepends=('rust' 'cargo' 'pkgconf' 'glib2')
+provides=('fingerprint-gui')
+conflicts=('fingerprint-gui')
+options=('!emptydirs')
+
+build() {
+  cd "${startdir}/.."
+
+  # Build both GUI and helper tool using workspace
+  cargo build --release --locked
+}
+
+package() {
+  cd "${startdir}/.."
+
+  # Install binaries into /opt/fingerprint_gui
+  install -d "${pkgdir}/opt/fingerprint_gui"
+  install -Dm755 "target/release/fingerprint_gui" \
+    "${pkgdir}/opt/fingerprint_gui/fingerprint_gui"
+  install -Dm755 "target/release/fingerprint-gui-helper" \
+    "${pkgdir}/opt/fingerprint_gui/fingerprint-gui-helper"
+
+  # Convenience symlink in /usr/bin
+  install -d "${pkgdir}/usr/bin"
+  ln -s "/opt/fingerprint_gui/fingerprint_gui" "${pkgdir}/usr/bin/fingerprint_gui"
+}
