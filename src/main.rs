@@ -1,229 +1,344 @@
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider, FlowBox,
-    Image, Label, Orientation, Stack, Switch, TextView, gio,
+    Image, Label, Orientation, Stack, Switch, gio,
 };
 
+use std::cell::RefCell;
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, TryRecvError};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
 
 mod fprintd;
 mod pam_config;
 use pam_config::PamConfig;
+use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
-fn run_enroll_in_textview(text_view: &TextView, finger: &str) {
-    let cmd = format!("fprintd-enroll -f {}", finger);
+fn display_finger_name(name: &str) -> String {
+    if name.is_empty() {
+        return String::new();
+    }
+    let mut s = name.replace('-', " ");
+    let mut chars = s.chars();
+    if let Some(first) = chars.next() {
+        let upper = first.to_ascii_uppercase().to_string();
+        s.replace_range(0..first.len_utf8(), &upper);
+    }
+    s
+}
 
-    // Clear and print the command at the top
-    let buffer = text_view.buffer();
-    buffer.set_text("");
-    let mut iter = buffer.end_iter();
-    buffer.insert(&mut iter, &format!("$ {}\n\n", cmd));
-    // Auto-scroll to bottom
-    let mut end_scroll = buffer.end_iter();
-    text_view.scroll_to_iter(&mut end_scroll, 0.0, false, 0.0, 1.0);
+#[derive(Clone)]
+struct UiCtx {
+    rt: Arc<Runtime>,
+    flow: FlowBox,
+    stack: Stack,
+    sw_login: Switch,
+    sw_term: Switch,
+    sw_prompt: Switch,
+    selected_finger: Rc<RefCell<Option<String>>>,
+    finger_label: Label,
+    action_label: Label,
+}
 
-    // Channel to send process output back to the UI thread
-    let (tx, rx) = mpsc::channel::<String>();
+#[derive(Clone)]
+enum UiEvent {
+    SetText(String),
+    EnrollCompleted,
+}
 
-    // UI updater: poll the channel regularly on the main thread
-    let tv = text_view.clone();
-    gtk4::glib::timeout_add_local(Duration::from_millis(100), move || {
-        loop {
-            match rx.try_recv() {
-                Ok(line) => {
-                    let buffer = tv.buffer();
-                    let mut iter = buffer.end_iter();
-                    buffer.insert(&mut iter, &line);
-                    // Auto-scroll to bottom
-                    let mut end_scroll = buffer.end_iter();
-                    tv.scroll_to_iter(&mut end_scroll, 0.0, false, 0.0, 1.0);
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return gtk4::glib::ControlFlow::Break,
-            }
-        }
-        gtk4::glib::ControlFlow::Continue
-    });
+async fn scan_enrolled_async() -> HashSet<String> {
+    let mut s = HashSet::new();
 
-    // Spawn the process with piped stdout and stderr
-    let mut child = match Command::new("bash")
-        .arg("-c")
-        .arg(&cmd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    println!("[fprintd] Connecting to system bus for scan_enrolled_async...");
+    let client = match fprintd::Client::system().await {
         Ok(c) => c,
         Err(e) => {
-            let _ = tx.send(format!("Failed to start process: {}\n", e));
-            return;
+            eprintln!("[fprintd][error] Failed to connect to system bus: {e}");
+            return s;
         }
     };
 
-    // Pump stdout
-    if let Some(stdout) = child.stdout.take() {
-        let tx_out = tx.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                let line = line.unwrap_or_default();
-                let _ = tx_out.send(format!("{}\n", line));
-            }
-        });
+    println!("[fprintd] Querying first fprintd device...");
+    let dev = match fprintd::first_device(&client).await {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            eprintln!("[fprintd][warn] No devices available");
+            return s;
+        }
+        Err(e) => {
+            eprintln!("[fprintd][error] GetDevices/GetDefaultDevice failed: {e}");
+            return s;
+        }
+    };
+
+    let username = std::env::var("USER").unwrap_or_default();
+
+    println!("[fprintd] Claiming device for user '{}'", username);
+    if let Err(e) = dev.claim(&username).await {
+        eprintln!("[fprintd][warn] Claim failed for '{}': {e}", username);
     }
 
-    // Pump stderr
-    if let Some(stderr) = child.stderr.take() {
-        let tx_err = tx.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                let line = line.unwrap_or_default();
-                let _ = tx_err.send(format!("{}\n", line));
-            }
-        });
-    }
-
-    // Wait for completion and notify
-    std::thread::spawn(move || {
-        let status = child.wait();
-        let msg = match status {
-            Ok(s) if s.success() => "\nEnrollment finished.\n".to_string(),
-            Ok(s) => format!("\nProcess exited with code: {:?}\n", s.code()),
-            Err(e) => format!("\nFailed to wait for process: {}\n", e),
-        };
-        let _ = tx.send(msg);
-        // When this thread ends and all senders drop, the UI timeout will stop automatically.
-    });
-}
-
-fn scan_enrolled() -> HashSet<String> {
-    println!("[fprintd] Scanning for enrolled fingers...");
-    let mut s = HashSet::new();
-
-    match fprintd::Client::system() {
-        Ok(client) => {
-            println!("[fprintd] Connected to system bus. Querying Manager...");
-            let mgr = client.manager();
-            match mgr.get_devices() {
-                Ok(paths) => {
-                    println!("[fprintd] Found {} device(s).", paths.len());
-                    if let Some(path) = paths.first() {
-                        println!("[fprintd] Using device: {}", path.as_str());
-                        let dev = client.device((*path).clone());
-
-                        // Try to claim before querying, then release afterwards
-                        let username = std::env::var("USER").unwrap_or_else(|_| String::from(""));
-                        if let Err(e) = dev.claim(&username) {
-                            println!("[fprintd][warn] Claim failed for '{}': {e}", username);
-                        }
-
-                        match dev.list_enrolled_fingers(&username) {
-                            Ok(list) => {
-                                println!("[fprintd] Enrolled fingers reported: {:?}", list);
-                                for f in list {
-                                    s.insert(f.clone());
-                                    if let Some(stripped) = f.strip_suffix("-finger") {
-                                        s.insert(stripped.to_string());
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                println!("[fprintd][error] ListEnrolledFingers failed: {e}");
-                            }
-                        }
-
-                        if let Err(e) = dev.release() {
-                            println!("[fprintd][warn] Release failed: {e}");
-                        }
-                    } else {
-                        println!("[fprintd][warn] No devices available");
-                    }
-                }
-                Err(e) => {
-                    println!("[fprintd][error] GetDevices failed: {e}");
-                }
+    println!("[fprintd] Listing enrolled fingers for user '{}'", username);
+    match dev.list_enrolled_fingers(&username).await {
+        Ok(list) => {
+            println!("[fprintd] Retrieved {} enrolled fingers", list.len());
+            for f in list {
+                s.insert(f.clone());
             }
         }
         Err(e) => {
-            println!("[fprintd][error] Failed to connect to system bus: {e}");
+            eprintln!("[fprintd][error] ListEnrolledFingers failed: {e}");
         }
+    }
+
+    println!("[fprintd] Releasing device after scan");
+    if let Err(e) = dev.release().await {
+        eprintln!("[fprintd][warn] Release failed: {e}");
     }
 
     s
 }
 
-fn populate_fingers(
+#[allow(clippy::too_many_arguments)]
+fn start_enrollment(
+    rt: Arc<Runtime>,
+    finger_key: String,
+    action_label: Label,
+    refresh_flow: FlowBox,
+    sw_login: Switch,
+    sw_term: Switch,
+    sw_prompt: Switch,
+    stack: Stack,
+    selected_finger: Rc<RefCell<Option<String>>>,
+    finger_label: Label,
+) {
+    let ctx = UiCtx {
+        rt,
+        flow: refresh_flow,
+        stack,
+        sw_login,
+        sw_term,
+        sw_prompt,
+        selected_finger,
+        finger_label,
+        action_label,
+    };
+    start_enrollment_ctx(finger_key, ctx);
+}
+
+fn start_enrollment_ctx(finger_key: String, ctx: UiCtx) {
+    let (tx, rx) = mpsc::channel::<UiEvent>();
+
+    {
+        let lbl = ctx.action_label.clone();
+        let ctx_for_pop = ctx.clone();
+
+        glib::timeout_add_local(Duration::from_millis(100), move || {
+            loop {
+                match rx.try_recv() {
+                    Ok(UiEvent::SetText(text)) => {
+                        lbl.set_use_markup(true);
+                        lbl.set_markup(&text);
+                    }
+                    Ok(UiEvent::EnrollCompleted) => {
+                        populate_fingers_async_ctx(ctx_for_pop.clone());
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    let _ = tx.send(UiEvent::SetText(
+        "<b>Place your finger on the scanner…</b>".to_string(),
+    ));
+
+    ctx.rt.spawn(async move {
+        println!("[fprintd] Connecting to system bus for enrollment...");
+        let client = match fprintd::Client::system().await {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(UiEvent::SetText(format!(
+                    "Failed to connect to system bus: {e}"
+                )));
+                return;
+            }
+        };
+
+        println!("[fprintd] Selecting enrollment device...");
+        let dev = match fprintd::first_device(&client).await {
+            Ok(Some(d)) => d,
+            Ok(None) => {
+                let _ = tx.send(UiEvent::SetText("No fingerprint reader found.".to_string()));
+                return;
+            }
+            Err(e) => {
+                let _ = tx.send(UiEvent::SetText(format!("Failed to enumerate device: {e}")));
+                return;
+            }
+        };
+
+        // Claim device
+        println!("[fprintd] Claiming device for enrollment (current user)...");
+        if let Err(e) = dev.claim("").await {
+            let _ = tx.send(UiEvent::SetText(format!("Could not claim device: {e}")));
+        }
+
+        // Attach listener first (like fingwit)
+        let dev_for_listener = dev.clone();
+        let dev_for_stop = dev_for_listener.clone();
+        let tx_status = tx.clone();
+        tokio::spawn(async move {
+            let _ = dev_for_listener
+                .listen_enroll_status(move |evt| {
+                    println!("[fprintd] EnrollStatus: result={}, done={}", evt.result, evt.done);
+                    let text = match evt.result.as_str() {
+                        "enroll-completed" => {
+                            let _ = tx_status.send(UiEvent::EnrollCompleted);
+                            "<b>Well done!</b> Your fingerprint was saved successfully.".to_string()
+                        }
+                        "enroll-stage-passed" => "Good scan! Do it again...".to_string(),
+                        "enroll-remove-and-retry" => "Try again...".to_string(),
+                        "enroll-duplicate" => {
+                            "<span color='orange'>This fingerprint is already saved, use a different finger.</span>".to_string()
+                        }
+                        "enroll-failed" => {
+                            "<span color='red'><b>Sorry</b>, your fingerprint could not be saved.</span>".to_string()
+                        }
+                        other => format!("Enrollment status: {} (done={})", other, evt.done),
+                    };
+                    let _ = tx_status.send(UiEvent::SetText(text));
+                    if evt.done {
+                        let dev_stop = dev_for_stop.clone();
+                        tokio::spawn(async move {
+                            let _ = dev_stop.enroll_stop().await;
+                            let _ = dev_stop.release().await;
+                        });
+                    }
+                })
+                .await;
+        });
+
+        // Start enrollment
+        println!("[fprintd] EnrollStart for finger '{}'", finger_key);
+        if let Err(e) = dev.enroll_start(&finger_key).await {
+            let _ = tx.send(UiEvent::SetText(format!("Enrollment error: {e}")));
+            let _ = dev.enroll_stop().await;
+            let _ = dev.release().await;
+        }
+    });
+}
+
+fn populate_fingers_async_ctx(ctx: UiCtx) {
+    let (tx, rx) = mpsc::channel::<HashSet<String>>();
+
+    {
+        let fingers_flow_clone = ctx.flow.clone();
+        let stack_clone = ctx.stack.clone();
+        let selected_clone = ctx.selected_finger.clone();
+        let finger_label_clone = ctx.finger_label.clone();
+        let action_label_clone = ctx.action_label.clone();
+        let sw_login_clone = ctx.sw_login.clone();
+        let sw_term_clone = ctx.sw_term.clone();
+        let sw_prompt_clone = ctx.sw_prompt.clone();
+
+        glib::timeout_add_local(Duration::from_millis(100), move || match rx.try_recv() {
+            Ok(enrolled) => {
+                let has_any = !enrolled.is_empty();
+                println!(
+                    "[ui] Populating finger grid; enrolled present: {} (count = {})",
+                    has_any,
+                    enrolled.len()
+                );
+                sw_login_clone.set_sensitive(has_any);
+                sw_term_clone.set_sensitive(has_any);
+                sw_prompt_clone.set_sensitive(has_any);
+
+                while let Some(child) = fingers_flow_clone.first_child() {
+                    fingers_flow_clone.remove(&child);
+                }
+
+                for key in fprintd::FINGERS {
+                    let finger_string = key.to_string();
+
+                    let btn_box = GtkBox::new(Orientation::Vertical, 4);
+
+                    let icon = Image::from_icon_name("fingerprint");
+                    icon.set_pixel_size(32);
+                    icon.set_halign(Align::Center);
+
+                    let label = Label::new(Some(&display_finger_name(&finger_string)));
+                    label.set_halign(Align::Center);
+
+                    btn_box.append(&icon);
+                    btn_box.append(&label);
+
+                    let event_btn = Button::new();
+                    event_btn.set_child(Some(&btn_box));
+                    if enrolled.contains(&finger_string) {
+                        event_btn.add_css_class("finger-enrolled");
+                    }
+
+                    let stack_for_click = stack_clone.clone();
+                    let selected_for_click = selected_clone.clone();
+                    let finger_label_for_click = finger_label_clone.clone();
+                    let action_label_for_click = action_label_clone.clone();
+                    let finger_key_for_click = finger_string.clone();
+                    event_btn.connect_clicked(move |_| {
+                        println!("[ui] Finger selected: {}", finger_key_for_click);
+                        selected_for_click.replace(Some(finger_key_for_click.clone()));
+                        finger_label_for_click
+                            .set_label(&display_finger_name(&finger_key_for_click));
+                        action_label_for_click.set_label("");
+                        stack_for_click.set_visible_child_name("finger");
+                    });
+
+                    fingers_flow_clone.append(&event_btn);
+                }
+
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        });
+    }
+
+    ctx.rt.spawn(async move {
+        let enrolled = scan_enrolled_async().await;
+        let _ = tx.send(enrolled);
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn populate_fingers_async(
+    rt: Arc<Runtime>,
     fingers_flow: &FlowBox,
-    terminal_view: &TextView,
+    stack: &Stack,
+    selected_finger: Rc<RefCell<Option<String>>>,
+    finger_label: &Label,
+    action_label: &Label,
     sw_login: &Switch,
     sw_term: &Switch,
     sw_prompt: &Switch,
 ) {
-    // Clear existing children
-    while let Some(child) = fingers_flow.first_child() {
-        fingers_flow.remove(&child);
-    }
-
-    let fingers = vec![
-        "left-thumb",
-        "left-index",
-        "left-middle",
-        "left-ring",
-        "left-little",
-        "right-thumb",
-        "right-index",
-        "right-middle",
-        "right-ring",
-        "right-little",
-    ];
-
-    let enrolled = scan_enrolled();
-
-    for finger in fingers {
-        let finger_string = finger.to_string();
-
-        let btn_box = GtkBox::new(Orientation::Vertical, 4);
-
-        let icon = Image::from_icon_name("fingerprint");
-        icon.set_pixel_size(32);
-        icon.set_halign(Align::Center);
-
-        let label = Label::new(Some(&finger_string.replace('-', " ")));
-        label.set_halign(Align::Center);
-
-        btn_box.append(&icon);
-        btn_box.append(&label);
-
-        let event_btn = Button::new();
-        event_btn.set_child(Some(&btn_box));
-        // Color already-enrolled fingers
-        if enrolled.contains(&finger_string)
-            || enrolled.contains(&format!("{}-finger", finger_string))
-        {
-            event_btn.add_css_class("finger-enrolled");
-        }
-
-        let sw_login_c = sw_login.clone();
-        let sw_term_c = sw_term.clone();
-        let sw_prompt_c = sw_prompt.clone();
-        let term_view_c = terminal_view.clone();
-        let finger_clone = finger_string.clone();
-        let btn_for_css = event_btn.clone();
-        event_btn.connect_clicked(move |_| {
-            run_enroll_in_textview(&term_view_c, &finger_clone);
-            sw_login_c.set_sensitive(true);
-            sw_term_c.set_sensitive(true);
-            sw_prompt_c.set_sensitive(true);
-            btn_for_css.add_css_class("finger-enrolled");
-        });
-
-        fingers_flow.append(&event_btn);
-    }
+    let ctx = UiCtx {
+        rt,
+        flow: fingers_flow.clone(),
+        stack: stack.clone(),
+        sw_login: sw_login.clone(),
+        sw_term: sw_term.clone(),
+        sw_prompt: sw_prompt.clone(),
+        selected_finger,
+        finger_label: finger_label.clone(),
+        action_label: action_label.clone(),
+    };
+    populate_fingers_async_ctx(ctx);
 }
 
 fn main() {
@@ -232,14 +347,22 @@ fn main() {
         .build();
 
     app.connect_activate(|app| {
-        // Register compiled gresources so Builder can load from resource paths
+
+        let rt = Arc::new(
+            TokioBuilder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to build Tokio runtime"),
+        );
+
+
         gio::resources_register_include!("xyz.xerolinux.fp_gui.gresource")
             .expect("Failed to register gresources");
-        // Make themed icons packaged in gresources discoverable by the icon theme
+
         if let Some(display) = gtk4::gdk::Display::default() {
             let theme = gtk4::IconTheme::for_display(&display);
             theme.add_resource_path("/xyz/xerolinux/fp_gui/icons");
-            // Load application CSS from gresource
+
             let css_provider = CssProvider::new();
             css_provider.load_from_resource("/xyz/xerolinux/fp_gui/css/style.css");
             gtk4::style_context_add_provider_for_display(
@@ -249,10 +372,10 @@ fn main() {
             );
         }
 
-        // Load UI from embedded GtkBuilder XML
+
         let builder = Builder::from_resource("/xyz/xerolinux/fp_gui/ui/main.ui");
 
-        // Toplevel window and stack
+
         let window: ApplicationWindow = builder
             .object("app_window")
             .expect("Failed to get app_window");
@@ -260,35 +383,63 @@ fn main() {
 
         let stack: Stack = builder.object("stack").expect("Failed to get stack");
 
-        // Buttons
+
         let enroll_btn: Button = builder
             .object("enroll_btn")
             .expect("Failed to get enroll_btn");
         let back_btn: Button = builder.object("back_btn").expect("Failed to get back_btn");
 
-        // Switches
+
         let sw_login: Switch = builder.object("sw_login").expect("Failed to get sw_login");
         let sw_term: Switch = builder.object("sw_term").expect("Failed to get sw_term");
         let sw_prompt: Switch = builder
             .object("sw_prompt")
             .expect("Failed to get sw_prompt");
 
-        // Initial switch state from current PAM configuration
+
         let (login_configured, sudo_configured, polkit_configured) =
             PamConfig::check_configurations();
         sw_login.set_active(login_configured);
         sw_term.set_active(sudo_configured);
         sw_prompt.set_active(polkit_configured);
 
-        sw_login.set_sensitive(true);
-        sw_term.set_sensitive(true);
-        sw_prompt.set_sensitive(true);
+        sw_login.set_sensitive(false);
+        sw_term.set_sensitive(false);
+        sw_prompt.set_sensitive(false);
+
+
+        {
+
+            let (tx, rx) = mpsc::channel::<bool>();
+            {
+                let sw_login_c = sw_login.clone();
+                let sw_term_c = sw_term.clone();
+                let sw_prompt_c = sw_prompt.clone();
+                glib::timeout_add_local(Duration::from_millis(100), move || {
+                    match rx.try_recv() {
+                        Ok(has_any) => {
+                            sw_login_c.set_sensitive(has_any);
+                            sw_term_c.set_sensitive(has_any);
+                            sw_prompt_c.set_sensitive(has_any);
+                            glib::ControlFlow::Break
+                        }
+                        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                    }
+                });
+            }
+            let rt2 = rt.clone();
+            rt2.spawn(async move {
+                let has_any = !scan_enrolled_async().await.is_empty();
+                let _ = tx.send(has_any);
+            });
+        }
 
         sw_login.set_tooltip_text(Some("Enroll fingerprint first."));
         sw_term.set_tooltip_text(Some("Enroll fingerprint first."));
         sw_prompt.set_tooltip_text(Some("Enroll fingerprint first."));
 
-        // Connect switch handlers to (un)patch PAM files
+
         {
             sw_login.connect_state_set(move |_switch, state| {
                 let res = if state {
@@ -330,25 +481,13 @@ fn main() {
             });
         }
 
-        // Navigation
+
         {
             let builder_c = builder.clone();
             let stack_nav = stack.clone();
-            let sw_login_c = sw_login.clone();
-            let sw_term_c = sw_term.clone();
-            let sw_prompt_c = sw_prompt.clone();
             enroll_btn.connect_clicked(move |_| {
-                if let (Some(fingers_flow), Some(terminal_view)) = (
-                    builder_c.object::<FlowBox>("fingers_flow"),
-                    builder_c.object::<TextView>("terminal_view"),
-                ) {
-                    populate_fingers(
-                        &fingers_flow,
-                        &terminal_view,
-                        &sw_login_c,
-                        &sw_term_c,
-                        &sw_prompt_c,
-                    );
+                if let Some(_fingers_flow) = builder_c.object::<FlowBox>("fingers_flow") {
+
                 }
                 stack_nav.set_visible_child_name("enroll");
             });
@@ -360,18 +499,186 @@ fn main() {
             });
         }
 
-        // Populate finger buttons dynamically in the FlowBox
+
         let fingers_flow: FlowBox = builder
             .object("fingers_flow")
             .expect("Failed to get fingers_flow");
-        let terminal_view: TextView = builder
-            .object("terminal_view")
-            .expect("Failed to get terminal_view");
 
-        // Populate buttons based on current enrollment
-        populate_fingers(
+
+        let finger_label: Label = builder
+            .object("finger_label")
+            .expect("Failed to get finger_label");
+        let action_label: Label = builder
+            .object("action_label")
+            .expect("Failed to get action_label");
+        let button_add: Button = builder
+            .object("button_add")
+            .expect("Failed to get button_add");
+        let button_delete: Button = builder
+            .object("button_delete")
+            .expect("Failed to get button_delete");
+        let button_cancel: Button = builder
+            .object("button_cancel")
+            .expect("Failed to get button_cancel");
+
+
+        let selected_finger: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+
+
+        {
+            let rt = rt.clone();
+            let flow = fingers_flow.clone();
+            let sw_login_c = sw_login.clone();
+            let sw_term_c = sw_term.clone();
+            let sw_prompt_c = sw_prompt.clone();
+            let action_label_c = action_label.clone();
+            let selected = selected_finger.clone();
+            let stack_c = stack.clone();
+            let finger_label_c = finger_label.clone();
+            button_add.connect_clicked(move |_| {
+                if let Some(key) = selected.borrow().clone() {
+                    println!("[ui] Add/Enroll clicked for finger: {}", key);
+                    start_enrollment(
+                        rt.clone(),
+                        key,
+                        action_label_c.clone(),
+                        flow.clone(),
+                        sw_login_c.clone(),
+                        sw_term_c.clone(),
+                        sw_prompt_c.clone(),
+                        stack_c.clone(),
+                        selected.clone(),
+                        finger_label_c.clone(),
+                    );
+                }
+            });
+        }
+        {
+            let rt = rt.clone();
+            let action_label_c = action_label.clone();
+            let flow = fingers_flow.clone();
+            let sw_login_c = sw_login.clone();
+            let sw_term_c = sw_term.clone();
+            let sw_prompt_c = sw_prompt.clone();
+            let selected = selected_finger.clone();
+            let stack_c = stack.clone();
+            let finger_label_c2 = finger_label.clone();
+            button_delete.connect_clicked(move |_| {
+                if let Some(key) = selected.borrow().clone() {
+                    println!("[ui] Delete clicked for finger: {}", key);
+                    let finger_name = key.clone();
+                    action_label_c.set_label("Deleting enrolled fingerprint...");
+
+
+                    let (tx_done, rx_done) = mpsc::channel::<Result<(), String>>();
+                    {
+                        let action_label_c = action_label_c.clone();
+                        let flow = flow.clone();
+                        let sw_login_c = sw_login_c.clone();
+                        let sw_term_c = sw_term_c.clone();
+                        let sw_prompt_c = sw_prompt_c.clone();
+                        let stack_c = stack_c.clone();
+                        let selected_c = selected.clone();
+                        let finger_label_c2 = finger_label_c2.clone();
+                        let rt_ui = rt.clone();
+                        glib::timeout_add_local(Duration::from_millis(100), move || {
+                            match rx_done.try_recv() {
+                                Ok(res) => {
+                                    match res {
+                                        Ok(()) => {
+                                            action_label_c.set_use_markup(true);
+                                            action_label_c.set_markup("<span color='orange'>Fingerprint deleted.</span>");
+                                        }
+                                        Err(msg) => {
+                                            action_label_c.set_use_markup(true);
+                                            action_label_c.set_markup(&msg);
+                                        }
+                                    }
+
+                                    let rt_c = rt_ui.clone();
+                                    populate_fingers_async(
+                                        rt_c.clone(),
+                                        &flow,
+                                        &stack_c,
+                                        selected_c.clone(),
+                                        &finger_label_c2,
+                                        &action_label_c,
+                                        &sw_login_c,
+                                        &sw_term_c,
+                                        &sw_prompt_c,
+                                    );
+
+                                    glib::ControlFlow::Break
+                                }
+                                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                                Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                            }
+                        });
+                    }
+
+
+                    rt.spawn({
+                        let finger_name = finger_name.clone();
+                        async move {
+                            println!("[fprintd] Connecting to system bus for delete...");
+                            match fprintd::Client::system().await {
+                                Ok(client) => {
+                                    println!("[fprintd] Locating device for delete...");
+                                    match fprintd::first_device(&client).await {
+                                        Ok(Some(dev)) => {
+                                            println!("[fprintd] Claiming device (current user)...");
+                                            if let Err(e) = dev.claim("").await {
+                                                eprintln!("[fprintd][warn] Claim failed: {e}");
+                                            }
+                                            println!("[fprintd] Deleting enrolled finger '{}'", finger_name);
+                                            if let Err(e) = dev.delete_enrolled_finger(&finger_name).await {
+                                                eprintln!("[fprintd][error] DeleteEnrolledFinger failed: {e}");
+                                                let _ = tx_done.send(Err(format!("<span color='red'><b>Delete failed</b>: {e}</span>")));
+                                                return;
+                                            }
+                                            println!("[fprintd] Releasing device after delete");
+                                            if let Err(e) = dev.release().await {
+                                                eprintln!("[fprintd][warn] Release failed after delete: {e}");
+                                            }
+                                            println!("[fprintd] Delete flow completed successfully");
+                                            let _ = tx_done.send(Ok(()));
+                                        }
+                                        Ok(None) => {
+                                            eprintln!("[fprintd][warn] No fingerprint devices available.");
+                                            let _ = tx_done.send(Err("<span color='orange'>No fingerprint devices available.</span>".to_string()));
+                                        }
+                                        Err(e) => {
+                                            eprintln!("[fprintd][error] Failed to enumerate devices: {e}");
+                                            let _ = tx_done.send(Err(format!("<span color='red'><b>Failed</b> to enumerate devices: {e}</span>")));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[fprintd][error] System bus connect failed: {e}");
+                                    let _ = tx_done.send(Err(format!("<span color='red'><b>Bus connect failed</b>: {e}</span>")));
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        {
+            let stack_nav = stack.clone();
+            button_cancel.connect_clicked(move |_| {
+                println!("[ui] Cancel clicked; navigating back to enroll page");
+                stack_nav.set_visible_child_name("enroll");
+            });
+        }
+
+
+        populate_fingers_async(
+            rt.clone(),
             &fingers_flow,
-            &terminal_view,
+            &stack,
+            selected_finger.clone(),
+            &finger_label,
+            &action_label,
             &sw_login,
             &sw_term,
             &sw_prompt,

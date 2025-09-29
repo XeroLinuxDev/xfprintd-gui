@@ -406,37 +406,117 @@
                     <property name="homogeneous">true</property>
                   </object>
                 </child>
-                <!-- Terminal-like output area -->
+              </object>
+            </property>
+          </object>
+        </child>
+
+        <!-- Finger detail page -->
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">finger</property>
+            <property name="title">Finger</property>
+            <property name="icon-name">preferences-system-symbolic</property>
+            <property name="child">
+              <object class="GtkBox" id="page_finger">
+                <property name="orientation">vertical</property>
+                <property name="spacing">20</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">30</property>
+                <property name="margin-end">30</property>
+                <property name="vexpand">true</property>
+                <property name="valign">center</property>
+
+                <!-- Big fingerprint icon -->
                 <child>
-                  <object class="GtkFrame" id="terminal_frame">
-                    <property name="label">Enrollment Output</property>
-                    <property name="label-xalign">0</property>
-                    <property name="margin-top">10</property>
-                    <property name="halign">fill</property>
-                    <property name="hexpand">true</property>
-                    <property name="vexpand">true</property>
+                  <object class="GtkImage" id="finger_icon">
+                    <property name="icon-name">fingerprint</property>
+                    <property name="pixel-size">64</property>
+                    <property name="halign">center</property>
+                  </object>
+                </child>
+
+                <!-- Selected finger title -->
+                <child>
+                  <object class="GtkLabel" id="finger_label">
+                    <property name="label">Finger</property>
+                    <property name="halign">center</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <style>
+                      <class name="title-2" />
+                    </style>
+                  </object>
+                </child>
+
+                <!-- Action/status label -->
+                <child>
+                  <object class="GtkLabel" id="action_label">
+                    <property name="use-markup">true</property>
+                    <property
+                                            name="label"
+                                        ><![CDATA[<b>Place your finger on the scanner…</b>]]></property>
+                    <property name="wrap">true</property>
+                    <property name="justify">center</property>
+                    <property name="halign">center</property>
+                    <property name="margin-start">12</property>
+                    <property name="margin-end">12</property>
+                    <property name="margin-bottom">10</property>
+                  </object>
+                </child>
+
+                <!-- Small hint -->
+                <child>
+                  <object class="GtkLabel" id="action_hint">
+                    <property
+                                            name="label"
+                                        >Keep your finger flat and centered. Lift and place again when asked.</property>
+                    <property name="wrap">true</property>
+                    <property name="justify">center</property>
+                    <property name="halign">center</property>
+                    <property name="margin-start">10</property>
+                    <property name="margin-end">10</property>
+                    <property name="margin-bottom">4</property>
+                    <style>
+                      <class name="dim-label" />
+                    </style>
+                  </object>
+                </child>
+
+                <!-- Buttons: Add / Delete / Cancel -->
+                <child>
+                  <object class="GtkBox" id="finger_buttons">
+                    <property name="orientation">horizontal</property>
+                    <property name="spacing">12</property>
+                    <property name="halign">center</property>
+
                     <child>
-                      <object class="GtkScrolledWindow" id="terminal_scroller">
-                        <property name="hexpand">true</property>
-                        <property name="halign">fill</property>
-                        <property name="vexpand">true</property>
-                        <property name="min-content-height">120</property>
-                        <child>
-                          <object class="GtkTextView" id="terminal_view">
-                            <property name="editable">false</property>
-                            <property name="wrap-mode">char</property>
-                            <property name="monospace">true</property>
-                            <property name="cursor-visible">false</property>
-                            <property name="left-margin">6</property>
-                            <property name="right-margin">6</property>
-                            <property name="top-margin">6</property>
-                            <property name="bottom-margin">6</property>
-                          </object>
-                        </child>
+                      <object class="GtkButton" id="button_add">
+                        <property name="label">Add</property>
+                        <style>
+                          <class name="suggested-action" />
+                        </style>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="GtkButton" id="button_delete">
+                        <property name="label">Delete</property>
+                        <style>
+                          <class name="destructive-action" />
+                        </style>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="GtkButton" id="button_cancel">
+                        <property name="label">Cancel</property>
                       </object>
                     </child>
                   </object>
                 </child>
+
               </object>
             </property>
           </object>
