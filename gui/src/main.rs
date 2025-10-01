@@ -622,11 +622,6 @@ fn main() {
             });
         }
 
-        sw_login.set_tooltip_text(Some("Enroll fingerprint first."));
-        sw_term.set_tooltip_text(Some("Enroll fingerprint first."));
-        sw_prompt.set_tooltip_text(Some("Enroll fingerprint first."));
-
-
         {
             sw_login.connect_state_set(move |_switch, state| {
                 if state {

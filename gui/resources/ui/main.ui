@@ -128,6 +128,35 @@
                     </child>
 
 
+                    <!-- Section note -->
+                    <child>
+                      <object class="GtkListBoxRow" id="row_switches_note">
+                        <property name="selectable">false</property>
+                        <property name="activatable">false</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="hexpand">true</property>
+                            <child>
+                              <object
+                                                                class="GtkLabel"
+                                                                id="switches_section_note"
+                                                            >
+                                <property
+                                                                    name="label"
+                                                                >Note: These switches will be active once at least one fingerprint is enrolled.</property>
+                                <property name="wrap">true</property>
+                                <property name="halign">center</property>
+                                <property name="xalign">0.5</property>
+                                <style>
+                                  <class name="toggle-hint" />
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+
                     <child>
                       <object class="GtkListBoxRow">
                         <property name="selectable">false</property>
