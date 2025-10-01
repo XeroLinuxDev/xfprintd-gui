@@ -460,7 +460,7 @@
                 <!-- Big fingerprint icon -->
                 <child>
                   <object class="GtkImage" id="finger_icon">
-                    <property name="icon-name">fingerprint</property>
+                    <property name="icon-name">xfprintd-gui</property>
                     <property name="pixel-size">64</property>
                     <property name="halign">center</property>
                   </object>

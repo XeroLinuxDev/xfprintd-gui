@@ -5,9 +5,59 @@
 use std::fmt;
 
 use futures_util::StreamExt;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use zbus::zvariant::{OwnedObjectPath, Type};
 use zbus::{Connection, Proxy};
+
+// BUS_NAME = 'net.reactivated.Fprint'
+// MAIN_OBJ = '/net/reactivated/Fprint/Manager'
+// SYSTEM_BUS = True
+// IS_OBJECT_MANAGER = False
+
+// MAIN_IFACE = 'net.reactivated.Fprint.Manager'
+// MANAGER_MOCK_IFACE = 'net.reactivated.Fprint.Manager.Mock'
+
+// DEVICE_IFACE = 'net.reactivated.Fprint.Device'
+// DEVICE_MOCK_IFACE = 'net.reactivated.Fprint.Device.Mock'
+
+// VALID_FINGER_NAMES = [
+//     'left-thumb',
+//     'left-index-finger',
+//     'left-middle-finger',
+//     'left-ring-finger',
+//     'left-little-finger',
+//     'right-thumb',
+//     'right-index-finger',
+//     'right-middle-finger',
+//     'right-ring-finger',
+//     'right-little-finger'
+// ]
+
+// VALID_VERIFY_STATUS = [
+//     'verify-no-match',
+//     'verify-match',
+//     'verify-retry-scan',
+//     'verify-too-fast',
+//     'verify-swipe-too-short',
+//     'verify-finger-not-centered',
+//     'verify-remove-and-retry',
+//     'verify-disconnected',
+//     'verify-unknown-error'
+// ]
+
+// VALID_ENROLL_STATUS = [
+//     'enroll-completed',
+//     'enroll-failed',
+//     'enroll-stage-passed',
+//     'enroll-retry-scan',
+//     'enroll-too-fast',
+//     'enroll-swipe-too-short',
+//     'enroll-finger-not-centered',
+//     'enroll-remove-and-retry',
+//     'enroll-data-full',
+//     'enroll-disconnected',
+//     'enroll-unknown-error'
+// ]
 
 /// D-Bus service (bus name) for fprintd.
 pub const SERVICE: &str = "net.reactivated.Fprint";

@@ -1,11 +1,11 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=XFPrintD GUI
+Name=XeroLinux Fingerprint GUI Tool
 GenericName=Fingerprint Manager
 Comment=GTK4 GUI to manage fingerprint enrollment and PAM integration
 Exec=xfprintd-gui
-Icon=fingerprint
+Icon=xfprintd-gui
 Terminal=false
 StartupNotify=true
 Categories=System;Security;Settings;

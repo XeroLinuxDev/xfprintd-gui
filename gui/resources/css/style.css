@@ -57,3 +57,37 @@ button.finger-enrolled:hover,
     background-color: alpha(currentColor, 0.3);
     border-color: alpha(currentColor, 0.45);
 }
+
+/* Hand section styling */
+label.hand-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: alpha(currentColor, 0.8);
+}
+
+/* Finger label styling */
+label.finger-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-align: center;
+    margin-top: 4px;
+    line-height: 1.2;
+}
+
+/* Finger button consistency */
+button.finger-enrolled,
+button.finger-unenrolled {
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+button.finger-unenrolled {
+    background-color: alpha(currentColor, 0.08);
+    border-color: alpha(currentColor, 0.2);
+}
+
+button.finger-unenrolled:hover {
+    background-color: alpha(currentColor, 0.15);
+    border-color: alpha(currentColor, 0.3);
+}

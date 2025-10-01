@@ -1,8 +1,8 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    gio, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
-    FlowBox, Image, Label, Orientation, Stack, Switch,
+    gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
+    FlowBox, Image, Justification, Label, Orientation, Stack, Switch,
 };
 
 use std::cell::RefCell;
@@ -30,6 +30,78 @@ fn display_finger_name(name: &str) -> String {
         s.replace_range(0..first.len_utf8(), &upper);
     }
     s
+}
+
+/// Create finger button with consistent sizing
+fn create_finger_button(
+    finger: &str,
+    enrolled: &HashSet<String>,
+    selected_finger: Rc<RefCell<Option<String>>>,
+    finger_label: Label,
+    action_label: Label,
+    stack: Stack,
+) -> GtkBox {
+    let container = GtkBox::new(Orientation::Vertical, 5);
+    container.set_halign(Align::Center);
+    container.set_size_request(100, 120);
+
+    let button = Button::new();
+    button.set_size_request(90, 90);
+
+    let is_enrolled = enrolled.contains(&finger.to_string());
+
+    let image = if is_enrolled {
+        Image::from_icon_name("fingerprint-enrolled")
+    } else {
+        Image::from_icon_name("fingerprint-unenrolled")
+    };
+    image.set_pixel_size(48);
+    button.set_child(Some(&image));
+
+    if is_enrolled {
+        button.add_css_class("finger-enrolled");
+    } else {
+        button.add_css_class("finger-unenrolled");
+    }
+
+    let finger_key = finger.to_string();
+    let selected_c = selected_finger.clone();
+    let finger_label_c = finger_label.clone();
+    let action_label_c = action_label.clone();
+    let stack_c = stack.clone();
+
+    button.connect_clicked(move |_| {
+        *selected_c.borrow_mut() = Some(finger_key.clone());
+        finger_label_c.set_label(&display_finger_name(&finger_key));
+        action_label_c.set_use_markup(false);
+        action_label_c.set_label("Select an action below.");
+        stack_c.set_visible_child_name("finger");
+        info!("👆 User selected finger: '{}'", finger_key);
+    });
+
+    // Create shortened label
+    let display_name = display_finger_name(finger);
+    let mut short_name = display_name
+        .replace(" finger", "")
+        .replace("Left ", "")
+        .replace("Right ", "");
+
+    // Capitalize first letter
+    if let Some(first_char) = short_name.chars().next() {
+        short_name =
+            first_char.to_uppercase().collect::<String>() + &short_name[first_char.len_utf8()..];
+    }
+
+    let label = Label::new(Some(&short_name));
+    label.set_css_classes(&["finger-label"]);
+    label.set_wrap(true);
+    label.set_wrap_mode(pango::WrapMode::Word);
+    label.set_justify(Justification::Center);
+    label.set_size_request(90, -1);
+
+    container.append(&button);
+    container.append(&label);
+    container
 }
 
 #[derive(Clone)]
@@ -333,8 +405,7 @@ fn populate_fingers_async_ctx(ctx: UiCtx) {
             Ok(enrolled) => {
                 let has_any = !enrolled.is_empty();
                 info!(
-                    "🔄 Updating UI: enrolled fingerprints found: {} (count = {})",
-                    has_any,
+                    "🔄 Updating finger selection UI with {} enrolled fingerprints",
                     enrolled.len()
                 );
 
@@ -352,52 +423,70 @@ fn populate_fingers_async_ctx(ctx: UiCtx) {
                 sw_term_clone.set_sensitive(has_any);
                 sw_prompt_clone.set_sensitive(has_any);
 
+                // Clear existing children
                 while let Some(child) = fingers_flow_clone.first_child() {
                     fingers_flow_clone.remove(&child);
                 }
 
-                for key in fprintd::FINGERS {
-                    let finger_string = key.to_string();
+                // Split fingers by hand
+                let left_fingers = &fprintd::FINGERS[0..5];
+                let right_fingers = &fprintd::FINGERS[5..10];
 
-                    let btn_box = GtkBox::new(Orientation::Vertical, 4);
+                // Create right hand section
+                let right_hand_container = GtkBox::new(Orientation::Vertical, 10);
+                right_hand_container.set_halign(Align::Center);
 
-                    let icon = Image::from_icon_name("fingerprint");
-                    icon.set_pixel_size(32);
-                    icon.set_halign(Align::Center);
+                let right_title = Label::new(Some("Right Hand"));
+                right_title.set_css_classes(&["hand-title"]);
+                right_hand_container.append(&right_title);
 
-                    let label = Label::new(Some(&display_finger_name(&finger_string)));
-                    label.set_halign(Align::Center);
+                let right_grid = GtkBox::new(Orientation::Horizontal, 8);
+                right_grid.set_halign(Align::Center);
+                right_grid.set_homogeneous(true);
 
-                    btn_box.append(&icon);
-                    btn_box.append(&label);
-
-                    let event_btn = Button::new();
-                    event_btn.set_child(Some(&btn_box));
-                    if enrolled.contains(&finger_string) {
-                        event_btn.add_css_class("finger-enrolled");
-                    }
-
-                    let stack_for_click = stack_clone.clone();
-                    let selected_for_click = selected_clone.clone();
-                    let finger_label_for_click = finger_label_clone.clone();
-                    let action_label_for_click = action_label_clone.clone();
-                    let finger_key_for_click = finger_string.clone();
-                    event_btn.connect_clicked(move |_| {
-                        info!(
-                            "👆 User selected finger: '{}' for action",
-                            finger_key_for_click
-                        );
-                        info!("🔄 Switching to finger action view");
-                        selected_for_click.replace(Some(finger_key_for_click.clone()));
-                        finger_label_for_click
-                            .set_label(&display_finger_name(&finger_key_for_click));
-                        action_label_for_click.set_label("");
-                        stack_for_click.set_visible_child_name("finger");
-                    });
-
-                    fingers_flow_clone.append(&event_btn);
+                for finger in right_fingers {
+                    let finger_container = create_finger_button(
+                        finger,
+                        &enrolled,
+                        selected_clone.clone(),
+                        finger_label_clone.clone(),
+                        action_label_clone.clone(),
+                        stack_clone.clone(),
+                    );
+                    right_grid.append(&finger_container);
                 }
 
+                right_hand_container.append(&right_grid);
+                fingers_flow_clone.append(&right_hand_container);
+
+                // Create left hand section
+                let left_hand_container = GtkBox::new(Orientation::Vertical, 10);
+                left_hand_container.set_halign(Align::Center);
+
+                let left_title = Label::new(Some("Left Hand"));
+                left_title.set_css_classes(&["hand-title"]);
+                left_hand_container.append(&left_title);
+
+                let left_grid = GtkBox::new(Orientation::Horizontal, 8);
+                left_grid.set_halign(Align::Center);
+                left_grid.set_homogeneous(true);
+
+                for finger in left_fingers {
+                    let finger_container = create_finger_button(
+                        finger,
+                        &enrolled,
+                        selected_clone.clone(),
+                        finger_label_clone.clone(),
+                        action_label_clone.clone(),
+                        stack_clone.clone(),
+                    );
+                    left_grid.append(&finger_container);
+                }
+
+                left_hand_container.append(&left_grid);
+                fingers_flow_clone.append(&left_hand_container);
+
+                info!("✅ Finger selection UI updated successfully with hand separation");
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
@@ -541,6 +630,8 @@ fn main() {
             .object("app_window")
             .expect("Failed to get app_window");
         window.set_application(Some(app));
+        info!("🖼️ Setting window icon to fingerprint");
+        window.set_icon_name(Some("xfprintd-gui"));
 
         let stack: Stack = builder.object("stack").expect("Failed to get stack");
 
