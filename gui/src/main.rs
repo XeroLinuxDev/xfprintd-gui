@@ -4,20 +4,18 @@ use gtk4::{
     gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
     FlowBox, Image, Justification, Label, Orientation, Stack, Switch,
 };
-
+use log::{error, info, warn};
+use pam_helper::PamHelper;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
+use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 mod fprintd;
 mod pam_helper;
-
-use log::{error, info, warn};
-use pam_helper::PamHelper;
-use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 fn display_finger_name(name: &str) -> String {
     if name.is_empty() {
@@ -32,7 +30,6 @@ fn display_finger_name(name: &str) -> String {
     s
 }
 
-/// Create finger button with consistent sizing
 fn create_finger_button(
     finger: &str,
     enrolled: &HashSet<String>,
@@ -79,14 +76,13 @@ fn create_finger_button(
         info!("👆 User selected finger: '{}'", finger_key);
     });
 
-    // Create shortened label
+    // Create label
     let display_name = display_finger_name(finger);
     let mut short_name = display_name
         .replace(" finger", "")
         .replace("Left ", "")
         .replace("Right ", "");
 
-    // Capitalize first letter
     if let Some(first_char) = short_name.chars().next() {
         short_name =
             first_char.to_uppercase().collect::<String>() + &short_name[first_char.len_utf8()..];
@@ -601,7 +597,6 @@ fn main() {
         );
         info!("⚡ Tokio async runtime initialized");
 
-
         gio::resources_register_include!("xyz.xerolinux.xfprintd_gui.gresource")
             .expect("Failed to register gresources");
 
@@ -622,9 +617,7 @@ fn main() {
             warn!("⚠️  No default display found - UI theming may not work properly");
         }
 
-
         let builder = Builder::from_resource("/xyz/xerolinux/xfprintd_gui/ui/main.ui");
-
 
         let window: ApplicationWindow = builder
             .object("app_window")
@@ -635,19 +628,15 @@ fn main() {
 
         let stack: Stack = builder.object("stack").expect("Failed to get stack");
 
-
-        let enroll_btn: Button = builder
-            .object("enroll_btn")
-            .expect("Failed to get enroll_btn");
+        let manage_btn: Button = builder
+            .object("manage_btn")
+            .expect("Failed to get manage_btn");
         let back_btn: Button = builder.object("back_btn").expect("Failed to get back_btn");
-
-
         let sw_login: Switch = builder.object("sw_login").expect("Failed to get sw_login");
         let sw_term: Switch = builder.object("sw_term").expect("Failed to get sw_term");
         let sw_prompt: Switch = builder
             .object("sw_prompt")
             .expect("Failed to get sw_prompt");
-
 
         info!("🔐 Checking current PAM authentication configurations");
         let (login_configured, sudo_configured, polkit_configured) =
@@ -666,7 +655,6 @@ fn main() {
         sw_login.set_sensitive(false);
         sw_term.set_sensitive(false);
         sw_prompt.set_sensitive(false);
-
 
         {
             info!("🔍 Starting background fingerprint enrollment check");
@@ -809,14 +797,10 @@ fn main() {
 
 
         {
-            let builder_c = builder.clone();
             let stack_nav = stack.clone();
-            enroll_btn.connect_clicked(move |_| {
-                info!("➕ User clicked 'Enroll' button - navigating to enrollment page");
-                if let Some(_fingers_flow) = builder_c.object::<FlowBox>("fingers_flow") {
-
-                }
-                stack_nav.set_visible_child_name("enroll");
+            manage_btn.connect_clicked(move |_| {
+                info!("➕ User clicked 'Manage' button - navigating to management page");
+                stack_nav.set_visible_child_name("manage");
             });
         }
         {
@@ -827,12 +811,9 @@ fn main() {
             });
         }
 
-
         let fingers_flow: FlowBox = builder
             .object("fingers_flow")
             .expect("Failed to get fingers_flow");
-
-
         let finger_label: Label = builder
             .object("finger_label")
             .expect("Failed to get finger_label");
@@ -845,13 +826,10 @@ fn main() {
         let button_delete: Button = builder
             .object("button_delete")
             .expect("Failed to get button_delete");
-        let button_cancel: Button = builder
-            .object("button_cancel")
-            .expect("Failed to get button_cancel");
-
-
+        let button_back: Button = builder
+            .object("button_back")
+            .expect("Failed to get button_back");
         let selected_finger: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
-
 
         {
             let rt = rt.clone();
@@ -899,7 +877,6 @@ fn main() {
                     let finger_name = key.clone();
                     action_label_c.set_label("Deleting enrolled fingerprint...");
 
-
                     let (tx_done, rx_done) = mpsc::channel::<Result<(), String>>();
                     {
                         let action_label_c = action_label_c.clone();
@@ -945,7 +922,6 @@ fn main() {
                             }
                         });
                     }
-
 
                     rt.spawn({
                         let finger_name = finger_name.clone();
@@ -1003,12 +979,11 @@ fn main() {
         }
         {
             let stack_nav = stack.clone();
-            button_cancel.connect_clicked(move |_| {
-                info!("❌ User clicked 'Cancel' button - returning to enrollment page");
-                stack_nav.set_visible_child_name("enroll");
+            button_back.connect_clicked(move |_| {
+                info!("⬅️  User clicked 'Back' button - returning to management page");
+                stack_nav.set_visible_child_name("manage");
             });
         }
-
 
         populate_fingers_async(
             rt.clone(),

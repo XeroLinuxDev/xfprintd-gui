@@ -1,20 +1,16 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <interface>
-  <!-- Resource path prefix: /xyz/xerolinux/xfprintd_gui -->
   <requires lib="gtk" version="4.0" />
 
-  <!-- Main application window -->
   <object class="GtkApplicationWindow" id="app_window">
     <property name="title">XFPrintD GUI</property>
     <property name="default-width">700</property>
     <property name="default-height">650</property>
 
     <child>
-      <!-- Central stack with two views: "main" and "enroll" -->
       <object class="GtkStack" id="stack">
         <property name="transition-type">crossfade</property>
 
-        <!-- Main page -->
         <child>
           <object class="GtkStackPage">
             <property name="name">main</property>
@@ -36,7 +32,6 @@
                     <property name="vexpand">true</property>
                     <property name="valign">center</property>
 
-                    <!-- Title -->
                     <child>
                       <object class="GtkLabel" id="main_title">
                         <property
@@ -49,7 +44,6 @@
                       </object>
                     </child>
 
-                    <!-- Icon -->
                     <child>
                       <object class="GtkImage" id="main_icon">
                         <property
@@ -60,7 +54,6 @@
                       </object>
                     </child>
 
-                    <!-- Description -->
                     <child>
                       <object class="GtkLabel" id="main_desc">
                         <property
@@ -73,10 +66,9 @@
                       </object>
                     </child>
 
-                    <!-- Enroll button -->
                     <child>
-                      <object class="GtkButton" id="enroll_btn">
-                        <property name="label">Enroll Fingerprint</property>
+                      <object class="GtkButton" id="manage_btn">
+                        <property name="label">Manage Fingerprints</property>
                         <property name="halign">center</property>
                         <property name="width-request">180</property>
                         <property name="height-request">36</property>
@@ -89,19 +81,15 @@
                   </object>
                 </child>
 
-                <!-- Switches section -->
-
                 <child>
                   <object class="GtkListBox" id="switches_list">
-                    <property name="selection-mode">none</property>
-                    <property name="show-separators">false</property>
                     <property name="hexpand">true</property>
                     <property name="vexpand">true</property>
                     <property name="valign">end</property>
                     <style>
                       <class name="boxed-list" />
                     </style>
-                    <!-- Header row -->
+
                     <child>
                       <object class="GtkListBoxRow" id="row_header">
                         <property name="selectable">false</property>
@@ -116,7 +104,6 @@
                                                             >
                                 <property name="label">Configuration</property>
                                 <property name="halign">center</property>
-                                <property name="xalign">0.5</property>
                                 <style>
                                   <class name="section-title" />
                                 </style>
@@ -128,7 +115,6 @@
                     </child>
 
 
-                    <!-- Section note -->
                     <child>
                       <object class="GtkListBoxRow" id="row_switches_note">
                         <property name="selectable">false</property>
@@ -146,7 +132,6 @@
                                                                 >Note: These switches will be active once at least one fingerprint is enrolled.</property>
                                 <property name="wrap">true</property>
                                 <property name="halign">center</property>
-                                <property name="xalign">0.5</property>
                                 <style>
                                   <class name="toggle-hint" />
                                 </style>
@@ -163,14 +148,13 @@
                         <property name="activatable">false</property>
                         <child>
                           <object class="GtkSeparator">
-                            <property name="orientation">horizontal</property>
                             <property name="margin-top">6</property>
                             <property name="margin-bottom">6</property>
                           </object>
                         </child>
                       </object>
                     </child>
-                    <!-- Login row -->
+
                     <child>
                       <object class="GtkListBoxRow" id="row_login">
                         <property name="selectable">false</property>
@@ -193,11 +177,9 @@
                                                                             name="label"
                                                                         >Enable Authentication On Login</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
                                     <style>
                                       <class name="toggle-title" />
                                     </style>
-
                                   </object>
                                 </child>
                                 <child>
@@ -207,8 +189,6 @@
                                                                         >Use your fingerprint to sign into your session.</property>
                                     <property name="wrap">true</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
-
                                     <style>
                                       <class name="toggle-hint" />
                                     </style>
@@ -234,7 +214,6 @@
                         <property name="activatable">false</property>
                         <child>
                           <object class="GtkSeparator">
-                            <property name="orientation">horizontal</property>
                             <property name="margin-top">6</property>
                             <property name="margin-bottom">6</property>
                           </object>
@@ -264,11 +243,9 @@
                                                                             name="label"
                                                                         >Enable Authentication in Terminal</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
                                     <style>
                                       <class name="toggle-title" />
                                     </style>
-
                                   </object>
                                 </child>
                                 <child>
@@ -278,7 +255,6 @@
                                                                         >Use fingerprint for sudo and terminal prompts.</property>
                                     <property name="wrap">true</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
                                     <style>
                                       <class name="toggle-hint" />
                                     </style>
@@ -304,7 +280,6 @@
                         <property name="activatable">false</property>
                         <child>
                           <object class="GtkSeparator">
-                            <property name="orientation">horizontal</property>
                             <property name="margin-top">6</property>
                             <property name="margin-bottom">6</property>
                           </object>
@@ -337,12 +312,10 @@
                                                                             name="label"
                                                                         >Enable Authentication in System Prompt</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
                                     <property name="margin-top">6</property>
                                     <style>
                                       <class name="toggle-title" />
                                     </style>
-
                                   </object>
                                 </child>
                                 <child>
@@ -352,7 +325,6 @@
                                                                         >Use fingerprint for polkit and graphical prompts.</property>
                                     <property name="wrap">true</property>
                                     <property name="halign">start</property>
-                                    <property name="xalign">0</property>
                                     <property name="margin-bottom">6</property>
                                     <style>
                                       <class name="toggle-hint" />
@@ -378,14 +350,13 @@
           </object>
         </child>
 
-        <!-- Enroll page -->
         <child>
           <object class="GtkStackPage">
-            <property name="name">enroll</property>
-            <property name="title">Enroll</property>
+            <property name="name">manage</property>
+            <property name="title">Manage</property>
             <property name="icon-name">system-search-symbolic</property>
             <property name="child">
-              <object class="GtkBox" id="page_enroll">
+              <object class="GtkBox" id="page_manage">
                 <property name="orientation">vertical</property>
                 <property name="spacing">15</property>
                 <property name="margin-top">20</property>
@@ -393,7 +364,7 @@
                 <property name="margin-start">30</property>
                 <property name="margin-end">30</property>
 
-                <!-- Back button -->
+
                 <child>
                   <object class="GtkButton" id="back_btn">
                     <property name="label">← Back</property>
@@ -401,21 +372,24 @@
                   </object>
                 </child>
 
-                <!-- Title -->
+
                 <child>
-                  <object class="GtkLabel" id="enroll_title">
-                    <property name="label">Select a finger to enroll:</property>
+                  <object class="GtkLabel" id="manage_title">
+                    <property name="label">Select a finger to manage</property>
                     <property name="halign">center</property>
                     <property name="margin-top">10</property>
+                    <style>
+                      <class name="title-1" />
+                    </style>
                   </object>
                 </child>
 
-                <!-- Description -->
+
                 <child>
-                  <object class="GtkLabel" id="enroll_desc">
+                  <object class="GtkLabel" id="manage_desc">
                     <property
                                             name="label"
-                                        >Click (tap) on a finger below to begin enrolling that fingerprint. Once enrolled, you will be able to use it for login or system prompts.</property>
+                                        >Click on a finger below to add or remove fingerprints. Once at least one fingerprint is enrolled, login functionality will be unlocked.</property>
                     <property name="wrap">true</property>
                     <property name="justify">center</property>
                     <property name="halign">center</property>
@@ -423,11 +397,9 @@
                   </object>
                 </child>
 
-                <!-- Flow box to dynamically populate finger buttons in code -->
+
                 <child>
                   <object class="GtkFlowBox" id="fingers_flow">
-                    <property name="selection-mode">none</property>
-                    <property name="halign">fill</property>
                     <property name="hexpand">true</property>
                     <property name="max-children-per-line">5</property>
                     <property name="row-spacing">20</property>
@@ -440,7 +412,6 @@
           </object>
         </child>
 
-        <!-- Finger detail page -->
         <child>
           <object class="GtkStackPage">
             <property name="name">finger</property>
@@ -457,7 +428,7 @@
                 <property name="vexpand">true</property>
                 <property name="valign">center</property>
 
-                <!-- Big fingerprint icon -->
+
                 <child>
                   <object class="GtkImage" id="finger_icon">
                     <property name="icon-name">xfprintd-gui</property>
@@ -466,7 +437,7 @@
                   </object>
                 </child>
 
-                <!-- Selected finger title -->
+
                 <child>
                   <object class="GtkLabel" id="finger_label">
                     <property name="label">Finger</property>
@@ -479,7 +450,7 @@
                   </object>
                 </child>
 
-                <!-- Action/status label -->
+
                 <child>
                   <object class="GtkLabel" id="action_label">
                     <property name="use-markup">true</property>
@@ -495,7 +466,7 @@
                   </object>
                 </child>
 
-                <!-- Small hint -->
+
                 <child>
                   <object class="GtkLabel" id="action_hint">
                     <property
@@ -513,7 +484,7 @@
                   </object>
                 </child>
 
-                <!-- Buttons: Add / Delete / Cancel -->
+
                 <child>
                   <object class="GtkBox" id="finger_buttons">
                     <property name="orientation">horizontal</property>
@@ -539,8 +510,8 @@
                     </child>
 
                     <child>
-                      <object class="GtkButton" id="button_cancel">
-                        <property name="label">Cancel</property>
+                      <object class="GtkButton" id="button_back">
+                        <property name="label">← Back</property>
                       </object>
                     </child>
                   </object>
