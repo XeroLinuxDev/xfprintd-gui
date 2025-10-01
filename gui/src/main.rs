@@ -16,6 +16,7 @@ use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 mod fprintd;
 mod pam_helper;
+mod system;
 mod util;
 
 fn create_finger_button(
@@ -236,7 +237,7 @@ fn start_enrollment_ctx(finger_key: String, ctx: UiCtx) {
     }
 
     let _ = tx.send(UiEvent::SetText(
-        "<b>🔍 Place your finger on the scanner…</b>".to_string(),
+        "<b>🔍 Place your finger firmly on the scanner…</b>".to_string(),
     ));
 
     ctx.rt.spawn(async move {
@@ -301,11 +302,11 @@ fn start_enrollment_ctx(finger_key: String, ctx: UiCtx) {
                         }
                         "enroll-stage-passed" => {
                             info!("✅ Enrollment stage passed, continuing...");
-                            "<span color='blue'><b>✅ Good scan!</b> Place your finger again...</span>".to_string()
+                            "<span color='blue'><b>✅ Good scan!</b> Lift your finger, then place it again...</span>".to_string()
                         },
                         "enroll-remove-and-retry" => {
                             warn!("⚠️  Enrollment stage failed, user needs to retry");
-                            "<span color='orange'><b>⚠️  Remove finger</b> and try again...</span>".to_string()
+                            "<span color='orange'><b>⚠️  Lift your finger</b> and place it down again...</span>".to_string()
                         },
                         "enroll-data-full" => {
                             info!("📊 Enrollment data buffer full, processing...");
@@ -512,63 +513,12 @@ fn main() {
     );
     info!("📱 Application ID: xyz.xerolinux.xfprintd_gui");
 
-    // System environment checks
-    info!("🔍 Performing system environment checks");
-
-    // Check if fprintd service is available
-    match std::process::Command::new("systemctl")
-        .args(["is-active", "fprintd"])
-        .output()
-    {
-        Ok(output) => {
-            let status_output = String::from_utf8_lossy(&output.stdout);
-            let status = status_output.trim();
-            if status == "active" {
-                info!("✅ fprintd service is running");
-            } else {
-                warn!("⚠️  fprintd service status: {}", status);
-                warn!("   You may need to start fprintd: sudo systemctl start fprintd");
-            }
-        }
-        Err(e) => {
-            warn!("⚠️  Cannot check fprintd service status: {}", e);
-        }
-    }
-
-    // Check if current user is in proper groups
-    let username = std::env::var("USER").unwrap_or_default();
-    info!("👤 Running as user: '{}'", username);
-
-    // Check for helper tool
-    let helper_path = "/opt/xfprintd-gui/xfprintd-gui-helper";
-    if std::path::Path::new(helper_path).exists() {
-        info!("✅ Helper tool found at: {}", helper_path);
-    } else {
-        warn!("⚠️  Helper tool not found at: {}", helper_path);
-        warn!("   PAM configuration features may not work");
-    }
-
-    // Check for pkexec availability
-    match std::process::Command::new("which").arg("pkexec").output() {
-        Ok(output) => {
-            if output.status.success() {
-                info!("✅ pkexec is available for privilege escalation");
-            } else {
-                warn!("⚠️  pkexec not found - PAM configuration will not work");
-            }
-        }
-        Err(_) => {
-            warn!("⚠️  Cannot check for pkexec availability");
-        }
-    }
-
     let app = Application::builder()
         .application_id("xyz.xerolinux.xfprintd_gui")
         .build();
 
     app.connect_activate(|app| {
-        info!("🔧 Initializing application components");
-
+        // Initialize UI and create main window first
         let rt = Arc::new(
             TokioBuilder::new_multi_thread()
                 .enable_all()
@@ -605,6 +555,18 @@ fn main() {
         window.set_application(Some(app));
         info!("🖼️ Setting window icon to fingerprint");
         window.set_icon_name(Some("xfprintd-gui"));
+
+        // Show the main window first
+        window.show();
+
+        // Check for supported distribution after main window is shown
+        system::check_distribution_support(&window);
+
+        // System environment checks
+        info!("🔍 Performing system environment checks");
+        system::check_fprintd_service();
+        system::check_helper_tool();
+        system::check_pkexec_availability();
 
         let stack: Stack = builder.object("stack").expect("Failed to get stack");
 
@@ -979,9 +941,6 @@ fn main() {
 
         info!("🔄 Setting initial view to main page");
         stack.set_visible_child_name("main");
-
-        info!("🪟 Displaying main application window");
-        window.show();
 
         info!("✅ XFPrintD GUI application startup complete");
     });
