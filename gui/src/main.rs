@@ -16,19 +16,7 @@ use tokio::runtime::{Builder as TokioBuilder, Runtime};
 
 mod fprintd;
 mod pam_helper;
-
-fn display_finger_name(name: &str) -> String {
-    if name.is_empty() {
-        return String::new();
-    }
-    let mut s = name.replace('-', " ");
-    let mut chars = s.chars();
-    if let Some(first) = chars.next() {
-        let upper = first.to_ascii_uppercase().to_string();
-        s.replace_range(0..first.len_utf8(), &upper);
-    }
-    s
-}
+mod util;
 
 fn create_finger_button(
     finger: &str,
@@ -69,7 +57,7 @@ fn create_finger_button(
 
     button.connect_clicked(move |_| {
         *selected_c.borrow_mut() = Some(finger_key.clone());
-        finger_label_c.set_label(&display_finger_name(&finger_key));
+        finger_label_c.set_label(&util::display_finger_name(&finger_key));
         action_label_c.set_use_markup(false);
         action_label_c.set_label("Select an action below.");
         stack_c.set_visible_child_name("finger");
@@ -77,16 +65,8 @@ fn create_finger_button(
     });
 
     // Create label
-    let display_name = display_finger_name(finger);
-    let mut short_name = display_name
-        .replace(" finger", "")
-        .replace("Left ", "")
-        .replace("Right ", "");
-
-    if let Some(first_char) = short_name.chars().next() {
-        short_name =
-            first_char.to_uppercase().collect::<String>() + &short_name[first_char.len_utf8()..];
-    }
+    let display_name = util::display_finger_name(finger);
+    let short_name = util::create_short_finger_name(&display_name);
 
     let label = Label::new(Some(&short_name));
     label.set_css_classes(&["finger-label"]);
