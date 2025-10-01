@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=XFPrintD GUI
+GenericName=Fingerprint Manager
+Comment=GTK4 GUI to manage fingerprint enrollment and PAM integration
+Exec=xfprintd-gui
+Icon=fingerprint
+Terminal=false
+StartupNotify=true
+Categories=System;Security;Settings;
+Keywords=fingerprint;biometric;authentication;pam;security;enrollment;
+StartupWMClass=xyz.xerolinux.xfprintd_gui

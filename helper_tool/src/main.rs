@@ -13,8 +13,8 @@ use std::{
 };
 
 /// Markers used to fence the fingerprint configuration blocks
-const BEGIN_MARK: &str = "# BEGIN fingerprint_gui";
-const END_MARK: &str = "# END fingerprint_gui";
+const BEGIN_MARK: &str = "# BEGIN xfprintd-gui";
+const END_MARK: &str = "# END xfprintd-gui";
 
 /// Standard PAM header
 const PAM_HEADER: &str = "#%PAM-1.0";
@@ -81,7 +81,7 @@ impl Target {
 /// Command line interface definition
 #[derive(Debug, Parser)]
 #[command(
-    name = "fingerprint-gui-helper",
+    name = "xfprintd-gui-helper",
     version,
     about = "Apply/remove/check fingerprint PAM config blocks"
 )]
@@ -225,7 +225,7 @@ fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
     let file_name = path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("fingerprint_gui");
+        .unwrap_or("xfprintd-gui");
     let temp_name = format!(".{}.{}-{}.tmp", file_name, pid, timestamp);
     let temp_path = parent.join(temp_name);
 

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <interface>
-  <!-- Resource path prefix: /xyz/xerolinux/fp_gui -->
+  <!-- Resource path prefix: /xyz/xerolinux/xfprintd_gui -->
   <requires lib="gtk" version="4.0" />
 
   <!-- Main application window -->
   <object class="GtkApplicationWindow" id="app_window">
-    <property name="title">Fingerprint GUI</property>
+    <property name="title">XFPrintD GUI</property>
     <property name="default-width">700</property>
     <property name="default-height">650</property>
 
@@ -54,7 +54,7 @@
                       <object class="GtkImage" id="main_icon">
                         <property
                                                     name="resource"
-                                                >/xyz/xerolinux/fp_gui/icons/hicolor/scalable/apps/fingerprint.png</property>
+                                                >/xyz/xerolinux/xfprintd_gui/icons/hicolor/scalable/apps/fingerprint.png</property>
                         <property name="pixel-size">48</property>
                         <property name="halign">center</property>
                       </object>

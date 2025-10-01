@@ -9,4 +9,4 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-description = "GTK4 GUI to manage fingerprint enrollment and PAM integration"
+description = "XFPrintD GUI - GTK4 GUI to manage fingerprint enrollment and PAM integration"

@@ -1,8 +1,8 @@
 [package]
-name = "fingerprint-gui-helper"
+name = "xfprintd-gui-helper"
 version.workspace = true
 edition = "2021"
-description = "Privileged helper to apply/remove/check fingerprint PAM configurations"
+description = "XFPrintD GUI - Privileged helper to apply/remove/check fingerprint PAM configurations"
 
 [dependencies]
 libc = "0.2"

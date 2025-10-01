@@ -340,31 +340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fingerprint-gui-helper"
-version = "0.1.0"
-dependencies = [
- "clap",
- "libc",
-]
-
-[[package]]
-name = "fingerprint_gui"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "glib-build-tools",
- "gtk4",
- "log",
- "once_cell",
- "serde",
- "simple_logger",
- "tokio",
- "zbus",
- "zbus_macros",
- "zvariant",
-]
-
-[[package]]
 name = "futures-channel"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1629,6 +1604,31 @@ name = "wit-bindgen"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
+
+[[package]]
+name = "xfprintd-gui"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "glib-build-tools",
+ "gtk4",
+ "log",
+ "once_cell",
+ "serde",
+ "simple_logger",
+ "tokio",
+ "zbus",
+ "zbus_macros",
+ "zvariant",
+]
+
+[[package]]
+name = "xfprintd-gui-helper"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+]
 
 [[package]]
 name = "zbus"

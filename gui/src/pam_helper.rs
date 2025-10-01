@@ -13,7 +13,7 @@ const SUDO_SERVICE: &str = "sudo";
 const POLKIT_SERVICE: &str = "polkit-1";
 
 /// Path to the helper binary (as installed by PKGBUILD)
-const HELPER_PATH: &str = "/opt/fingerprint_gui/fingerprint-gui-helper";
+const HELPER_PATH: &str = "/opt/xfprintd-gui/xfprintd-gui-helper";
 
 impl PamHelper {
     /// Check if fingerprint configuration is applied for a specific service

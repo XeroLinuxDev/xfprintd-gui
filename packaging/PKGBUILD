@@ -1,4 +1,4 @@
-pkgname=fingerprint-gui
+pkgname=xfprintd-gui
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="GTK4 GUI to manage fingerprint enrollment and PAM integration; includes privileged Polkit helper"
@@ -7,8 +7,8 @@ url="https://xerolinux.xyz"
 license=('MIT')
 depends=('gtk4' 'polkit' 'glib2')
 makedepends=('rust' 'cargo' 'pkgconf' 'glib2')
-provides=('fingerprint-gui')
-conflicts=('fingerprint-gui')
+provides=('xfprintd-gui')
+conflicts=('xfprintd-gui')
 options=('!emptydirs')
 
 build() {
@@ -21,14 +21,18 @@ build() {
 package() {
   cd "${startdir}/.."
 
-  # Install binaries into /opt/fingerprint_gui
-  install -d "${pkgdir}/opt/fingerprint_gui"
-  install -Dm755 "target/release/fingerprint_gui" \
-    "${pkgdir}/opt/fingerprint_gui/fingerprint_gui"
-  install -Dm755 "target/release/fingerprint-gui-helper" \
-    "${pkgdir}/opt/fingerprint_gui/fingerprint-gui-helper"
+  # Install binaries into /opt/xfprintd-gui
+  install -d "${pkgdir}/opt/xfprintd-gui"
+  install -Dm755 "target/release/xfprintd-gui" \
+    "${pkgdir}/opt/xfprintd-gui/xfprintd-gui"
+  install -Dm755 "target/release/xfprintd-gui-helper" \
+    "${pkgdir}/opt/xfprintd-gui/xfprintd-gui-helper"
 
   # Convenience symlink in /usr/bin
   install -d "${pkgdir}/usr/bin"
-  ln -s "/opt/fingerprint_gui/fingerprint_gui" "${pkgdir}/usr/bin/fingerprint_gui"
+  ln -s "/opt/xfprintd-gui/xfprintd-gui" "${pkgdir}/usr/bin/xfprintd-gui"
+
+  # Install desktop file
+  install -Dm644 "packaging/xfprintd-gui.desktop" \
+    "${pkgdir}/usr/share/applications/xfprintd-gui.desktop"
 }

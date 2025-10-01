@@ -442,10 +442,10 @@ fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
 
     info!(
-        "🚀 Starting Fingerprint GUI Application v{}",
+        "🚀 Starting XFPrintD GUI Application v{}",
         env!("CARGO_PKG_VERSION")
     );
-    info!("📱 Application ID: xyz.xerolinux.fp_gui");
+    info!("📱 Application ID: xyz.xerolinux.xfprintd_gui");
 
     // System environment checks
     info!("🔍 Performing system environment checks");
@@ -475,7 +475,7 @@ fn main() {
     info!("👤 Running as user: '{}'", username);
 
     // Check for helper tool
-    let helper_path = "/opt/fingerprint_gui/fingerprint-gui-helper";
+    let helper_path = "/opt/xfprintd-gui/xfprintd-gui-helper";
     if std::path::Path::new(helper_path).exists() {
         info!("✅ Helper tool found at: {}", helper_path);
     } else {
@@ -498,7 +498,7 @@ fn main() {
     }
 
     let app = Application::builder()
-        .application_id("xyz.xerolinux.fp_gui")
+        .application_id("xyz.xerolinux.xfprintd_gui")
         .build();
 
     app.connect_activate(|app| {
@@ -513,16 +513,16 @@ fn main() {
         info!("⚡ Tokio async runtime initialized");
 
 
-        gio::resources_register_include!("xyz.xerolinux.fp_gui.gresource")
+        gio::resources_register_include!("xyz.xerolinux.xfprintd_gui.gresource")
             .expect("Failed to register gresources");
 
         if let Some(display) = gtk4::gdk::Display::default() {
             info!("🎨 Setting up UI theme and styling");
             let theme = gtk4::IconTheme::for_display(&display);
-            theme.add_resource_path("/xyz/xerolinux/fp_gui/icons");
+            theme.add_resource_path("/xyz/xerolinux/xfprintd_gui/icons");
 
             let css_provider = CssProvider::new();
-            css_provider.load_from_resource("/xyz/xerolinux/fp_gui/css/style.css");
+            css_provider.load_from_resource("/xyz/xerolinux/xfprintd_gui/css/style.css");
             gtk4::style_context_add_provider_for_display(
                 &display,
                 &css_provider,
@@ -534,7 +534,7 @@ fn main() {
         }
 
 
-        let builder = Builder::from_resource("/xyz/xerolinux/fp_gui/ui/main.ui");
+        let builder = Builder::from_resource("/xyz/xerolinux/xfprintd_gui/ui/main.ui");
 
 
         let window: ApplicationWindow = builder
@@ -937,7 +937,7 @@ fn main() {
         info!("🪟 Displaying main application window");
         window.show();
 
-        info!("✅ Fingerprint GUI application startup complete");
+        info!("✅ XFPrintD GUI application startup complete");
     });
 
     app.run();

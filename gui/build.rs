@@ -14,6 +14,6 @@ fn main() {
     glib_build_tools::compile_resources(
         &["resources"],
         "resources/resources.gresource.xml",
-        "xyz.xerolinux.fp_gui.gresource",
+        "xyz.xerolinux.xfprintd_gui.gresource",
     );
 }
