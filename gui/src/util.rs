@@ -1,6 +1,4 @@
-/// Formats a finger name for display by replacing dashes with spaces and capitalizing the first letter.
-///
-/// Examples: "left-thumb" -> "Left thumb", "right-index-finger" -> "Right index finger"
+/// Format finger name for display (replace dashes, capitalize).
 pub fn display_finger_name(name: &str) -> String {
     if name.is_empty() {
         return String::new();
@@ -14,9 +12,7 @@ pub fn display_finger_name(name: &str) -> String {
     s
 }
 
-/// Creates a shortened display name for finger labels by removing common words.
-///
-/// Examples: "Left index finger" -> "Index", "Right thumb" -> "Thumb"
+/// Create short finger name by removing common words.
 pub fn create_short_finger_name(display_name: &str) -> String {
     let mut short_name = display_name
         .replace(" finger", "")
@@ -31,18 +27,14 @@ pub fn create_short_finger_name(display_name: &str) -> String {
     short_name
 }
 
-/// Checks if the current Linux distribution is supported.
-///
-/// Examples: returns true for "XeroLinux", false for other distributions
+/// Check if current distribution is supported (XeroLinux).
 pub fn is_supported_distribution() -> bool {
     get_distribution_name()
         .map(|name| name.to_lowercase().contains("xerolinux"))
         .unwrap_or(false)
 }
 
-/// Gets the current Linux distribution name from /etc/os-release.
-///
-/// Examples: returns Some("XeroLinux") on XeroLinux systems, Some("Ubuntu") on Ubuntu, etc.
+/// Get distribution name from os-release files.
 pub fn get_distribution_name() -> Option<String> {
     use std::fs;
 
@@ -78,7 +70,7 @@ pub fn get_distribution_name() -> Option<String> {
     None
 }
 
-/// Parses the NAME field from os-release file content.
+/// Parse NAME field from os-release content.
 fn parse_os_release_name(content: &str) -> Option<String> {
     for line in content.lines() {
         if line.starts_with("NAME=") {
