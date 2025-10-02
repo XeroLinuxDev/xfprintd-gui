@@ -64,6 +64,7 @@ pub fn setup_application_ui(app: &Application) {
     let ctx = setup_ui_components(&window, rt, &builder);
     setup_pam_switches(&ctx);
     setup_navigation_buttons(&ctx, &builder);
+    setup_info_button(&window, &builder);
     setup_fingerprint_management(&ctx, &builder);
 
     perform_initial_fingerprint_scan(&ctx);
@@ -337,6 +338,39 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
     }
 }
 
+/// Set up info button to show about dialog.
+fn setup_info_button(window: &ApplicationWindow, builder: &Builder) {
+    let info_btn: Button = builder.object("info_btn").expect("Failed to get info_btn");
+
+    let window_clone = window.clone();
+    info_btn.connect_clicked(move |_| {
+        info!("User clicked 'About' button - showing info dialog");
+        show_info_dialog(&window_clone);
+    });
+}
+
+/// Show the info dialog with credits and donation links.
+fn show_info_dialog(main_window: &ApplicationWindow) {
+    let builder = Builder::from_resource("/xyz/xerolinux/xfprintd_gui/ui/info_dialog.ui");
+
+    let info_window: gtk4::Window = builder
+        .object("info_window")
+        .expect("Failed to get info_window");
+
+    let close_button: Button = builder
+        .object("close_button")
+        .expect("Failed to get close_button");
+
+    info_window.set_transient_for(Some(main_window));
+
+    let info_window_clone = info_window.clone();
+    close_button.connect_clicked(move |_| {
+        info_window_clone.close();
+    });
+
+    info_window.show();
+}
+
 /// Set up fingerprint management buttons.
 fn setup_fingerprint_management(ctx: &AppContext, _builder: &Builder) {
     setup_enroll_button(&ctx.button_add, ctx);
@@ -567,6 +601,7 @@ fn update_fingerprint_ui(
 }
 
 /// Create finger button sections for left and right hands.
+#[allow(clippy::too_many_arguments)]
 fn create_finger_sections(
     enrolled: &HashSet<String>,
     fingers_flow: &FlowBox,
@@ -608,6 +643,7 @@ fn create_finger_sections(
 }
 
 /// Create hand section (left or right) with finger buttons.
+#[allow(clippy::too_many_arguments)]
 fn create_hand_section(
     title: &str,
     fingers: &[&str],
@@ -649,6 +685,7 @@ fn create_hand_section(
 }
 
 /// Create finger button widget.
+#[allow(clippy::too_many_arguments)]
 fn create_finger_button(
     finger: &str,
     enrolled: &HashSet<String>,
