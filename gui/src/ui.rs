@@ -27,6 +27,8 @@ pub struct AppContext {
     pub selected_finger: Rc<RefCell<Option<String>>>,
     pub finger_label: Label,
     pub action_label: Label,
+    pub button_add: Button,
+    pub button_delete: Button,
     pub sw_login: Switch,
     pub sw_term: Switch,
     pub sw_prompt: Switch,
@@ -123,6 +125,12 @@ fn setup_ui_components(
     let action_label: Label = builder
         .object("action_label")
         .expect("Failed to get action_label");
+    let button_add: Button = builder
+        .object("button_add")
+        .expect("Failed to get button_add");
+    let button_delete: Button = builder
+        .object("button_delete")
+        .expect("Failed to get button_delete");
     let sw_login: Switch = builder.object("sw_login").expect("Failed to get sw_login");
     let sw_term: Switch = builder.object("sw_term").expect("Failed to get sw_term");
     let sw_prompt: Switch = builder
@@ -138,6 +146,8 @@ fn setup_ui_components(
         selected_finger,
         finger_label,
         action_label,
+        button_add,
+        button_delete,
         sw_login,
         sw_term,
         sw_prompt,
@@ -328,16 +338,9 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
 }
 
 /// Set up fingerprint management buttons.
-fn setup_fingerprint_management(ctx: &AppContext, builder: &Builder) {
-    let button_add: Button = builder
-        .object("button_add")
-        .expect("Failed to get button_add");
-    let button_delete: Button = builder
-        .object("button_delete")
-        .expect("Failed to get button_delete");
-
-    setup_enroll_button(&button_add, ctx);
-    setup_delete_button(&button_delete, ctx);
+fn setup_fingerprint_management(ctx: &AppContext, _builder: &Builder) {
+    setup_enroll_button(&ctx.button_add, ctx);
+    setup_delete_button(&ctx.button_delete, ctx);
 }
 
 /// Set up enrollment button.
@@ -358,6 +361,8 @@ fn setup_enroll_button(button_add: &Button, ctx: &AppContext) {
                 selected_finger: ctx_clone.selected_finger.clone(),
                 finger_label: ctx_clone.finger_label.clone(),
                 action_label: ctx_clone.action_label.clone(),
+                button_add: ctx_clone.button_add.clone(),
+                button_delete: ctx_clone.button_delete.clone(),
             };
 
             enroll::start_enrollment(key, enrollment_ctx);
@@ -380,6 +385,8 @@ fn setup_delete_button(button_delete: &Button, ctx: &AppContext) {
                 selected_finger: ctx_clone.selected_finger.clone(),
                 finger_label: ctx_clone.finger_label.clone(),
                 action_label: ctx_clone.action_label.clone(),
+                button_add: ctx_clone.button_add.clone(),
+                button_delete: ctx_clone.button_delete.clone(),
             };
 
             remove::start_removal(key, removal_ctx);
@@ -438,6 +445,8 @@ fn perform_initial_fingerprint_scan(ctx: &AppContext) {
         ctx.selected_finger.clone(),
         ctx.finger_label.clone(),
         ctx.action_label.clone(),
+        ctx.button_add.clone(),
+        ctx.button_delete.clone(),
         ctx.sw_login.clone(),
         ctx.sw_term.clone(),
         ctx.sw_prompt.clone(),
@@ -453,6 +462,8 @@ pub fn refresh_fingerprint_display(
     selected_finger: Rc<RefCell<Option<String>>>,
     finger_label: Label,
     action_label: Label,
+    button_add: Button,
+    button_delete: Button,
     sw_login: Switch,
     sw_term: Switch,
     sw_prompt: Switch,
@@ -465,6 +476,8 @@ pub fn refresh_fingerprint_display(
         let selected_clone = selected_finger.clone();
         let finger_label_clone = finger_label.clone();
         let action_label_clone = action_label.clone();
+        let button_add_clone = button_add.clone();
+        let button_delete_clone = button_delete.clone();
         let sw_login_clone = sw_login.clone();
         let sw_term_clone = sw_term.clone();
         let sw_prompt_clone = sw_prompt.clone();
@@ -478,6 +491,8 @@ pub fn refresh_fingerprint_display(
                     &selected_clone,
                     &finger_label_clone,
                     &action_label_clone,
+                    &button_add_clone,
+                    &button_delete_clone,
                     &sw_login_clone,
                     &sw_term_clone,
                     &sw_prompt_clone,
@@ -504,6 +519,8 @@ fn update_fingerprint_ui(
     selected_finger: &Rc<RefCell<Option<String>>>,
     finger_label: &Label,
     action_label: &Label,
+    button_add: &Button,
+    button_delete: &Button,
     sw_login: &Switch,
     sw_term: &Switch,
     sw_prompt: &Switch,
@@ -528,6 +545,9 @@ fn update_fingerprint_ui(
     sw_term.set_sensitive(has_any);
     sw_prompt.set_sensitive(has_any);
 
+    // Update button states based on selected finger and enrollment status
+    update_button_states(&enrolled, selected_finger, button_add, button_delete);
+
     while let Some(child) = fingers_flow.first_child() {
         fingers_flow.remove(&child);
     }
@@ -538,6 +558,8 @@ fn update_fingerprint_ui(
         selected_finger,
         finger_label,
         action_label,
+        button_add,
+        button_delete,
         stack,
     );
 
@@ -551,6 +573,8 @@ fn create_finger_sections(
     selected_finger: &Rc<RefCell<Option<String>>>,
     finger_label: &Label,
     action_label: &Label,
+    button_add: &Button,
+    button_delete: &Button,
     stack: &Stack,
 ) {
     let left_fingers = &fprintd::FINGERS[0..5];
@@ -563,6 +587,8 @@ fn create_finger_sections(
         selected_finger,
         finger_label,
         action_label,
+        button_add,
+        button_delete,
         stack,
     );
     fingers_flow.append(&right_hand_container);
@@ -574,6 +600,8 @@ fn create_finger_sections(
         selected_finger,
         finger_label,
         action_label,
+        button_add,
+        button_delete,
         stack,
     );
     fingers_flow.append(&left_hand_container);
@@ -587,6 +615,8 @@ fn create_hand_section(
     selected_finger: &Rc<RefCell<Option<String>>>,
     finger_label: &Label,
     action_label: &Label,
+    button_add: &Button,
+    button_delete: &Button,
     stack: &Stack,
 ) -> GtkBox {
     let hand_container = GtkBox::new(Orientation::Vertical, 10);
@@ -601,15 +631,17 @@ fn create_hand_section(
     finger_grid.set_homogeneous(true);
 
     for finger in fingers {
-        let finger_container = create_finger_button(
+        let finger_box = create_finger_button(
             finger,
             enrolled,
             selected_finger.clone(),
             finger_label.clone(),
             action_label.clone(),
+            button_add.clone(),
+            button_delete.clone(),
             stack.clone(),
         );
-        finger_grid.append(&finger_container);
+        finger_grid.append(&finger_box);
     }
 
     hand_container.append(&finger_grid);
@@ -623,6 +655,8 @@ fn create_finger_button(
     selected_finger: Rc<RefCell<Option<String>>>,
     finger_label: Label,
     action_label: Label,
+    button_add: Button,
+    button_delete: Button,
     stack: Stack,
 ) -> GtkBox {
     let container = GtkBox::new(Orientation::Vertical, 5);
@@ -653,6 +687,9 @@ fn create_finger_button(
     let finger_label_c = finger_label.clone();
     let action_label_c = action_label.clone();
     let stack_c = stack.clone();
+    let button_add_c = button_add.clone();
+    let button_delete_c = button_delete.clone();
+    let enrolled_c = enrolled.clone();
 
     button.connect_clicked(move |_| {
         *selected_c.borrow_mut() = Some(finger_key.clone());
@@ -661,6 +698,9 @@ fn create_finger_button(
         action_label_c.set_label("Select an action below.");
         stack_c.set_visible_child_name("finger");
         info!("User selected finger: '{}'", finger_key);
+
+        // Update button states when finger is selected
+        update_button_states(&enrolled_c, &selected_c, &button_add_c, &button_delete_c);
     });
 
     let display_name = util::display_finger_name(finger);
@@ -676,4 +716,32 @@ fn create_finger_button(
     container.append(&button);
     container.append(&label);
     container
+}
+
+/// Update button states based on selected finger and enrollment status
+fn update_button_states(
+    enrolled: &HashSet<String>,
+    selected_finger: &Rc<RefCell<Option<String>>>,
+    button_add: &Button,
+    button_delete: &Button,
+) {
+    if let Some(ref finger_key) = *selected_finger.borrow() {
+        let is_enrolled = enrolled.contains(finger_key);
+
+        // Enable Add button if fingerprint is NOT enrolled
+        button_add.set_sensitive(!is_enrolled);
+
+        // Enable Remove button if fingerprint IS enrolled
+        button_delete.set_sensitive(is_enrolled);
+
+        info!(
+            "Updated button states for finger '{}': Add={}, Remove={}",
+            finger_key, !is_enrolled, is_enrolled
+        );
+    } else {
+        // No finger selected, disable both buttons
+        button_add.set_sensitive(false);
+        button_delete.set_sensitive(false);
+        info!("No finger selected, both buttons disabled");
+    }
 }

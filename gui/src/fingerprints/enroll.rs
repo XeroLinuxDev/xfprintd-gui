@@ -3,7 +3,7 @@
 use crate::fprintd;
 use gtk4::glib;
 
-use gtk4::{FlowBox, Label, Stack, Switch};
+use gtk4::{Button, FlowBox, Label, Stack, Switch};
 use log::{error, info, warn};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,6 +23,8 @@ pub struct EnrollmentContext {
     pub selected_finger: Rc<RefCell<Option<String>>>,
     pub finger_label: Label,
     pub action_label: Label,
+    pub button_add: Button,
+    pub button_delete: Button,
 }
 
 /// Events sent during enrollment process.
@@ -274,6 +276,8 @@ fn refresh_fingerprint_ui(ctx: EnrollmentContext) {
         ctx.selected_finger,
         ctx.finger_label,
         ctx.action_label,
+        ctx.button_add,
+        ctx.button_delete,
         ctx.sw_login,
         ctx.sw_term,
         ctx.sw_prompt,
