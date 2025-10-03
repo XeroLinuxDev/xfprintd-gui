@@ -8,9 +8,10 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
-    FlowBox, Image, Justification, Label, Orientation, Stack, Switch,
+    FlowBox, Image, Justification, Label, Orientation, Overlay, Stack, Switch,
 };
 use log::{error, info, warn};
+
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -698,20 +699,29 @@ fn create_finger_button(
 ) -> GtkBox {
     let container = GtkBox::new(Orientation::Vertical, 5);
     container.set_halign(Align::Center);
-    container.set_size_request(100, 120);
+    container.set_size_request(120, 120);
 
     let button = Button::new();
     button.set_size_request(90, 90);
 
     let is_enrolled = enrolled.contains(&finger.to_string());
+    //let is_enrolled = rand::random::<bool>(); silly little debugger
 
-    let image = if is_enrolled {
-        Image::from_icon_name("fingerprint-enrolled")
-    } else {
-        Image::from_icon_name("fingerprint-unenrolled")
-    };
-    image.set_pixel_size(48);
-    button.set_child(Some(&image));
+    // Base fingerprint icon with optional enrollment badge overlay
+    let overlay = Overlay::new();
+    let base_image = Image::from_icon_name("fingerprint-symbolic");
+    base_image.set_pixel_size(64);
+    overlay.set_child(Some(&base_image));
+
+    if is_enrolled {
+        let badge = Image::from_icon_name("checkmark");
+        badge.set_pixel_size(32);
+        badge.set_halign(Align::End);
+        badge.set_valign(Align::End);
+        overlay.add_overlay(&badge);
+    }
+
+    button.set_child(Some(&overlay));
 
     if is_enrolled {
         button.add_css_class("finger-enrolled");

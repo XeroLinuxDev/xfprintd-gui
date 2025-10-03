@@ -27,9 +27,7 @@
 
             <child>
               <object class="GtkImage" id="info_icon">
-                <property
-                                    name="resource"
-                                >/xyz/xerolinux/xfprintd_gui/icons/hicolor/scalable/apps/fingerprint.png</property>
+                <property name="icon-name">xfprintd-gui</property>
                 <property name="pixel-size">48</property>
               </object>
             </child>

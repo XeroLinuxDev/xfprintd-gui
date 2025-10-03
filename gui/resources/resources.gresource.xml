@@ -15,24 +15,11 @@
 
     <file compressed="true">css/style.css</file>
     <!-- Icons -->
-    <file compressed="true">icons/hicolor/scalable/apps/fingerprint.png</file>
-    <file
-            alias="icons/fingerprint.png"
-            compressed="true"
-        >icons/hicolor/scalable/apps/fingerprint.png</file>
+    <file compressed="true">icons/scalable/apps/fingerprint.svg</file>
     <file
             compressed="true"
-        >icons/hicolor/scalable/apps/fingerprint-enrolled.png</file>
-    <file
-            alias="icons/fingerprint-enrolled.png"
-            compressed="true"
-        >icons/hicolor/scalable/apps/fingerprint-enrolled.png</file>
-    <file
-            compressed="true"
-        >icons/hicolor/scalable/apps/fingerprint-unenrolled.png</file>
-    <file
-            alias="icons/fingerprint-unenrolled.png"
-            compressed="true"
-        >icons/hicolor/scalable/apps/fingerprint-unenrolled.png</file>
+        >icons/scalable/actions/fingerprint-symbolic.svg</file>
+    <file compressed="true">icons/scalable/actions/checkmark.svg</file>
+    <file compressed="true">icons/scalable/actions/manage.svg</file>
   </gresource>
 </gresources>

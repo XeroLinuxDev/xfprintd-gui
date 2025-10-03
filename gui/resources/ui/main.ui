@@ -63,10 +63,8 @@
 
                     <child>
                       <object class="GtkImage" id="main_icon">
-                        <property
-                                                    name="resource"
-                                                >/xyz/xerolinux/xfprintd_gui/icons/hicolor/scalable/apps/fingerprint.png</property>
-                        <property name="pixel-size">48</property>
+                        <property name="icon-name">xfprintd-gui</property>
+                        <property name="pixel-size">64</property>
                         <property name="halign">center</property>
                       </object>
                     </child>
@@ -455,10 +453,26 @@
 
 
                 <child>
-                  <object class="GtkImage" id="finger_icon">
-                    <property name="icon-name">xfprintd-gui</property>
-                    <property name="pixel-size">64</property>
+                  <object class="GtkOverlay" id="finger_icon_overlay">
                     <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <child>
+                      <object class="GtkImage" id="finger_icon">
+                        <property
+                                                    name="icon-name"
+                                                >fingerprint-symbolic</property>
+                        <property name="pixel-size">128</property>
+                        <property name="halign">center</property>
+                      </object>
+                    </child>
+                    <child type="overlay">
+                      <object class="GtkImage" id="finger_icon_manage_badge">
+                        <property name="icon-name">manage</property>
+                        <property name="halign">end</property>
+                        <property name="valign">end</property>
+                        <property name="pixel-size">40</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
 

@@ -37,8 +37,8 @@ package() {
     "${pkgdir}/usr/share/applications/xfprintd-gui.desktop"
 
   # Install icon
-  install -Dm644 "gui/resources/icons/hicolor/scalable/apps/fingerprint.png" \
-    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/xfprintd-gui.png"
+  install -Dm644 "gui/resources/icons/scalable/apps/fingerprint.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/xfprintd-gui.svg"
 }
 
 post_install() {
