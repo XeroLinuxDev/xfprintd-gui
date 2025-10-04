@@ -1,7 +1,7 @@
 //! User Interface handling functionality.
 
 use crate::fingerprints::{enroll, remove};
-use crate::pam_helper::{get_login_path, PamHelper, POLKIT_PATH, SUDO_PATH};
+use crate::pam_helper::{get_login_path, is_sddm_enabled, PamHelper, POLKIT_PATH, SUDO_PATH};
 use crate::util;
 use crate::{fprintd, system};
 use gtk4::glib;
@@ -64,6 +64,17 @@ pub fn setup_application_ui(app: &Application) {
 
     let ctx = setup_ui_components(&window, rt, &builder);
     setup_pam_switches(&ctx);
+    // Configure the SDDM-specific login info button (only visible when SDDM is enabled)
+    let login_info_btn: Button = builder
+        .object("login_info_btn")
+        .expect("Failed to get login_info_btn");
+    if is_sddm_enabled() {
+        info!("SDDM detected - showing login info hint button");
+        login_info_btn.set_visible(true);
+    } else {
+        info!("SDDM not detected - hiding login info hint button");
+        login_info_btn.set_visible(false);
+    }
     setup_navigation_buttons(&ctx, &builder);
     setup_info_button(&window, &builder);
     setup_fingerprint_management(&ctx, &builder);

@@ -224,9 +224,36 @@
                               </object>
                             </child>
                             <child>
-                              <object class="GtkSwitch" id="sw_login">
-                                <property name="halign">end</property>
-                                <property name="valign">center</property>
+                              <object class="GtkBox" id="login_controls_box">
+                                <property
+                                                                    name="orientation"
+                                                                >horizontal</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkButton" id="login_info_btn">
+                                    <property name="halign">center</property>
+                                    <property name="valign">center</property>
+                                    <property
+                                                                            name="tooltip-text"
+                                                                        >For SDDM login: Press Enter on an empty password field, then swipe your finger.</property>
+                                    <child>
+                                      <object class="GtkImage">
+                                        <property
+                                                                                    name="icon-name"
+                                                                                >dialog-information-symbolic</property>
+                                        <property
+                                                                                    name="pixel-size"
+                                                                                >16</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkSwitch" id="sw_login">
+                                    <property name="halign">end</property>
+                                    <property name="valign">center</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                           </object>

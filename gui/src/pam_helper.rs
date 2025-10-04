@@ -29,7 +29,7 @@ pub fn get_login_path() -> &'static str {
 }
 
 /// Check if SDDM is enabled via systemd.
-fn is_sddm_enabled() -> bool {
+pub fn is_sddm_enabled() -> bool {
     match Command::new("systemctl")
         .arg("is-enabled")
         .arg("sddm.service")
