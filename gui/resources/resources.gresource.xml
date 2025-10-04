@@ -12,6 +12,10 @@
             preprocess="xml-stripblanks"
             compressed="true"
         >ui/info_dialog.ui</file>
+    <file
+            preprocess="xml-stripblanks"
+            compressed="true"
+        >ui/lockout_warning_dialog.ui</file>
 
     <file compressed="true">css/style.css</file>
     <!-- Icons -->

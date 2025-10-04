@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+
+  <object class="GtkWindow" id="lockout_warning_window">
+    <property name="title">Warning: Potential Lockout</property>
+    <property name="default-width">450</property>
+    <property name="default-height">300</property>
+    <property name="modal">true</property>
+    <property name="resizable">false</property>
+
+    <child>
+      <object class="GtkBox" id="main_box">
+        <property name="orientation">vertical</property>
+        <property name="spacing">20</property>
+        <property name="margin-top">30</property>
+        <property name="margin-bottom">30</property>
+        <property name="margin-start">30</property>
+        <property name="margin-end">30</property>
+
+        <!-- Title section with icon -->
+        <child>
+          <object class="GtkBox" id="title_box">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">10</property>
+            <property name="halign">center</property>
+
+            <child>
+              <object class="GtkImage" id="warning_icon">
+                <property name="icon-name">dialog-warning</property>
+                <property name="pixel-size">48</property>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkLabel" id="title_label">
+                <property name="label">Potential System Lockout</property>
+                <property name="halign">center</property>
+                <style>
+                  <class name="title-2" />
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <!-- Main warning message -->
+        <child>
+          <object class="GtkLabel" id="main_message">
+            <property
+                            name="label"
+                        >You are attempting to remove your last enrolled fingerprint while fingerprint authentication is still enabled.</property>
+            <property name="wrap">true</property>
+            <property name="justify">center</property>
+            <property name="halign">center</property>
+            <property name="margin-top">10</property>
+          </object>
+        </child>
+
+        <!-- Detailed warning -->
+        <child>
+          <object class="GtkLabel" id="detail_message">
+            <property name="use-markup">true</property>
+            <property
+                            name="label"
+                        ><![CDATA[<b>This could lock you out of your system!</b>
+
+Please disable all fingerprint authentication toggles on the main page before removing your last fingerprint.]]></property>
+            <property name="wrap">true</property>
+            <property name="justify">center</property>
+            <property name="halign">center</property>
+            <property name="margin-top">5</property>
+          </object>
+        </child>
+
+        <!-- Instructions -->
+        <child>
+          <object class="GtkLabel" id="instruction_label">
+            <property name="label">Go back to the main page and disable:
+• Login Authentication
+• Terminal Authentication
+• System Prompts</property>
+            <property name="wrap">true</property>
+            <property name="justify">center</property>
+            <property name="halign">center</property>
+            <property name="margin-top">10</property>
+            <style>
+              <class name="dim-label" />
+            </style>
+          </object>
+        </child>
+
+        <!-- Confirmation checkbox -->
+        <child>
+          <object class="GtkBox" id="confirmation_box">
+            <property name="orientation">horizontal</property>
+            <property name="halign">center</property>
+            <property name="spacing">10</property>
+            <property name="margin-top">15</property>
+
+            <child>
+              <object class="GtkCheckButton" id="confirmation_check">
+                <property name="active">false</property>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkLabel" id="confirmation_label">
+                <property
+                                    name="label"
+                                >I understand the risk and want to delete anyway</property>
+                <property name="wrap">true</property>
+                <style>
+                  <class name="dim-label" />
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <!-- Button section -->
+        <child>
+          <object class="GtkBox" id="button_box">
+            <property name="orientation">horizontal</property>
+            <property name="halign">center</property>
+            <property name="spacing">10</property>
+            <property name="margin-top">20</property>
+
+            <child>
+              <object class="GtkButton" id="cancel_button">
+                <property name="label">Cancel Deletion</property>
+                <property name="width-request">150</property>
+                <style>
+                  <class name="suggested-action" />
+                </style>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkButton" id="proceed_button">
+                <property name="label">Delete Anyway</property>
+                <property name="width-request">150</property>
+                <property name="sensitive">false</property>
+                <style>
+                  <class name="destructive-action" />
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
