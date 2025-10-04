@@ -21,5 +21,6 @@
         >icons/scalable/actions/fingerprint-symbolic.svg</file>
     <file compressed="true">icons/scalable/actions/checkmark.svg</file>
     <file compressed="true">icons/scalable/actions/manage.svg</file>
+    <file compressed="true">icons/scalable/actions/heart.svg</file>
   </gresource>
 </gresources>

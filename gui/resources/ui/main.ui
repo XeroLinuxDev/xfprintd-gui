@@ -33,10 +33,15 @@
                     <property name="margin-bottom">10</property>
                     <child>
                       <object class="GtkButton" id="info_btn">
-                        <property name="label">About</property>
                         <property name="halign">end</property>
-                        <property name="width-request">120</property>
-                        <property name="height-request">32</property>
+                        <property name="width-request">48</property>
+                        <property name="height-request">48</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="icon-name">heart</property>
+                            <property name="pixel-size">24</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
