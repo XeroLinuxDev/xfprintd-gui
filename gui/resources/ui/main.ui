@@ -202,7 +202,7 @@
                                   <object class="GtkLabel" id="lbl_login_title">
                                     <property
                                                                             name="label"
-                                                                        >Enable Authentication On Login</property>
+                                                                        >Enable Authentication on Login</property>
                                     <property name="halign">start</property>
                                     <style>
                                       <class name="toggle-title" />
