@@ -7,3 +7,5 @@ description = "XFPrintD GUI - Privileged helper to apply/remove/check fingerprin
 [dependencies]
 libc = "0.2"
 clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

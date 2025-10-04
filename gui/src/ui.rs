@@ -1,7 +1,7 @@
 //! User Interface handling functionality.
 
 use crate::fingerprints::{enroll, remove};
-use crate::pam_helper::PamHelper;
+use crate::pam_helper::{get_login_path, PamHelper, POLKIT_PATH, SUDO_PATH};
 use crate::util;
 use crate::{fprintd, system};
 use gtk4::glib;
@@ -209,10 +209,11 @@ fn setup_pam_switch_handlers(ctx: &AppContext) {
             info!("User disabled login fingerprint authentication switch");
         }
 
+        let login_path = get_login_path();
         let res = if state {
-            PamHelper::apply_login()
+            PamHelper::apply_configuration(login_path)
         } else {
-            PamHelper::remove_login()
+            PamHelper::remove_configuration(login_path)
         };
 
         match res {
@@ -244,9 +245,9 @@ fn setup_pam_switch_handlers(ctx: &AppContext) {
         }
 
         let res = if state {
-            PamHelper::apply_sudo()
+            PamHelper::apply_configuration(SUDO_PATH)
         } else {
-            PamHelper::remove_sudo()
+            PamHelper::remove_configuration(SUDO_PATH)
         };
 
         match res {
@@ -278,9 +279,9 @@ fn setup_pam_switch_handlers(ctx: &AppContext) {
         }
 
         let res = if state {
-            PamHelper::apply_polkit()
+            PamHelper::apply_configuration(POLKIT_PATH)
         } else {
-            PamHelper::remove_polkit()
+            PamHelper::remove_configuration(POLKIT_PATH)
         };
 
         match res {

@@ -1,80 +1,54 @@
-//! Privileged helper tool for managing fingerprint authentication PAM configurations.
+//! Privileged helper tool for managing PAM configurations using patch files.
 //!
-//! This tool safely applies, removes, or checks fingerprint authentication blocks
-//! in PAM configuration files for login, sudo, and polkit-1 services.
+//! This tool safely applies, removes, or checks configuration blocks
+//! in PAM configuration files using patch files stored alongside the binary.
+//!
+//! Patch files are stored in: /opt/xfprintd-gui/patches/<encoded-path>.patch
+//! For example: /opt/xfprintd-gui/patches/etc/pam.d/sudo.patch
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::{self, Write},
     os::unix::fs::PermissionsExt,
-    path::Path,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-/// Markers used to fence the fingerprint configuration blocks
+/// Markers used to fence the configuration blocks
 const BEGIN_MARK: &str = "# BEGIN xfprintd-gui";
 const END_MARK: &str = "# END xfprintd-gui";
 
 /// Standard PAM header
 const PAM_HEADER: &str = "#%PAM-1.0";
 
-/// PAM configuration file paths
-const LOGIN_PATH: &str = "/etc/pam.d/login";
-const SUDO_PATH: &str = "/etc/pam.d/sudo";
-const POLKIT_PATH: &str = "/etc/pam.d/polkit-1";
-const POLKIT_DEFAULT: &str = "/usr/lib/pam.d/polkit-1";
+/// Base directory for patches (relative to binary location)
+const PATCHES_BASE_DIR: &str = "/opt/xfprintd-gui/patches";
 
-/// PAM configuration blocks for each service
-const LOGIN_BLOCK: &str = concat!(
-    "auth    [success=1 default=ignore]  pam_succeed_if.so service in sudo:su:su-l tty in :unknown\n",
-    "auth    sufficient  pam_fprintd.so",
-);
+/// Allowlisted PAM configuration directories
+const ALLOWED_DIRS: &[&str] = &["/etc/pam.d"];
 
-const SUDO_BLOCK: &str = concat!(
-    "auth    [success=1  default=ignore] pam_succeed_if.so service in sudo:su:su-l tty in :unknown\n",
-    "auth    sufficient  pam_fprintd.so",
-);
-
-const POLKIT_BLOCK: &str = concat!(
-    "auth    [success=1 default=ignore]  pam_succeed_if.so service in sudo:su:su-l tty in :unknown\n",
-    "auth    sufficient  pam_fprintd.so\n",
-    "auth    sufficient  pam_unix.so try_first_pass likeauth nullok",
-);
-
-/// Supported PAM configuration targets
-#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
-enum Target {
-    #[value(name = "login")]
-    Login,
-    #[value(name = "sudo")]
-    Sudo,
-    #[value(name = "polkit-1")]
-    Polkit1,
+/// Target configuration with optional default file fallback
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TargetConfig {
+    /// Target file path (e.g., "/etc/pam.d/sudo")
+    file: String,
+    /// Optional default file to use if target doesn't exist (e.g., "/usr/lib/pam.d/polkit-1")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<String>,
 }
 
-impl Target {
-    /// Returns the service name for this target
-    fn service(self) -> &'static str {
-        match self {
-            Target::Login => "login",
-            Target::Sudo => "sudo",
-            Target::Polkit1 => "polkit-1",
+impl TargetConfig {
+    fn new(file: String) -> Self {
+        Self {
+            file,
+            default: None,
         }
     }
 
-    /// Returns the filesystem path for this target
-    fn path(self) -> &'static str {
-        get_target_path(self.service()).expect("Target must have a valid path")
-    }
-
-    /// Returns the PAM configuration block for this target
-    fn config_block(self) -> &'static str {
-        match self {
-            Target::Login => LOGIN_BLOCK,
-            Target::Sudo => SUDO_BLOCK,
-            Target::Polkit1 => POLKIT_BLOCK,
-        }
+    fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 }
 
@@ -83,7 +57,7 @@ impl Target {
 #[command(
     name = "xfprintd-gui-helper",
     version,
-    about = "Apply/remove/check fingerprint PAM config blocks"
+    about = "Apply/remove/check PAM config blocks using patch files"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -93,47 +67,63 @@ struct Cli {
 /// Available subcommands
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Insert fenced fingerprint block into the specified PAM target
+    /// Insert fenced configuration block into specified PAM files
     Apply {
-        #[arg(value_enum)]
-        target: Target,
+        /// JSON objects with 'file' and optional 'default' fields
+        /// Example: '{"file":"/etc/pam.d/sudo"}' or '{"file":"/etc/pam.d/polkit-1","default":"/usr/lib/pam.d/polkit-1"}'
+        #[arg(required = true)]
+        targets: Vec<String>,
     },
-    /// Remove fenced fingerprint block from the specified PAM target
+    /// Remove fenced configuration block from specified PAM files
     Remove {
-        #[arg(value_enum)]
-        target: Target,
+        /// PAM configuration file paths (e.g., /etc/pam.d/sudo)
+        #[arg(required = true)]
+        paths: Vec<String>,
     },
-    /// Exit 0 if the fenced block is present for the target, else 1
+    /// Check if configuration is applied to specified PAM files
     Check {
-        #[arg(value_enum)]
-        target: Target,
+        /// PAM configuration file paths (e.g., /etc/pam.d/sudo)
+        #[arg(required = true)]
+        paths: Vec<String>,
     },
-    /// Check all targets and output status for each
-    CheckAll,
-    /// Apply fingerprint configuration to all targets
-    ApplyAll,
-    /// Remove fingerprint configuration from all targets
-    RemoveAll,
 }
 
-/// Maps service names to their filesystem paths
-fn get_target_path(service: &str) -> Option<&'static str> {
-    match service {
-        "login" => Some(LOGIN_PATH),
-        "sudo" => Some(SUDO_PATH),
-        "polkit-1" => Some(POLKIT_PATH),
-        _ => None,
-    }
+/// Converts a file path to its corresponding patch file path
+/// Example: /etc/pam.d/sudo -> /opt/xfprintd-gui/patches/etc/pam.d/sudo.patch
+fn get_patch_path(target_path: &str) -> PathBuf {
+    let normalized = target_path.strip_prefix('/').unwrap_or(target_path);
+    PathBuf::from(PATCHES_BASE_DIR)
+        .join(normalized)
+        .with_extension("patch")
 }
 
-/// Checks if a path is in the allowlist of supported PAM configuration files
+/// Checks if a path is in the allowlist of supported PAM configuration directories
 fn is_allowlisted_path(path: &Path) -> bool {
     let path_str = match path.to_str() {
         Some(s) => s,
         None => return false,
     };
 
-    [LOGIN_PATH, SUDO_PATH, POLKIT_PATH].contains(&path_str)
+    ALLOWED_DIRS
+        .iter()
+        .any(|allowed| path_str.starts_with(allowed))
+}
+
+/// Reads patch file content for the given target path
+fn read_patch_content(target_path: &str) -> io::Result<String> {
+    let patch_path = get_patch_path(target_path);
+
+    if !patch_path.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Patch file not found: {}", patch_path.display()),
+        ));
+    }
+
+    let content = fs::read_to_string(&patch_path)?;
+
+    // Remove trailing newlines/whitespace for consistent formatting
+    Ok(content.trim_end().to_string())
 }
 
 /// Creates a fenced configuration block with begin/end markers
@@ -259,35 +249,46 @@ fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// Applies fingerprint configuration to the specified target
-fn apply_fingerprint_config(target: Target) -> io::Result<()> {
-    let path = Path::new(target.path());
+/// Applies configuration to the specified target
+fn apply_config(target: &TargetConfig) -> io::Result<()> {
+    let path = Path::new(&target.file);
 
     if !is_allowlisted_path(path) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "Target path is not allowlisted",
+            format!("Target path is not allowlisted: {}", target.file),
         ));
     }
 
-    // For polkit-1, try to use system default as base if file doesn't exist
-    let base_content =
-        if target == Target::Polkit1 && !path.exists() && Path::new(POLKIT_DEFAULT).is_file() {
-            fs::read_to_string(POLKIT_DEFAULT)?
+    // Read the patch content
+    let patch_content = read_patch_content(&target.file)?;
+
+    // Use default file if specified and target doesn't exist
+    let base_content = if !path.exists() {
+        if let Some(default_path) = &target.default {
+            let default = Path::new(default_path);
+            if default.is_file() {
+                fs::read_to_string(default)?
+            } else {
+                read_file_or_default(path, PAM_HEADER)?
+            }
         } else {
             read_file_or_default(path, PAM_HEADER)?
-        };
+        }
+    } else {
+        read_file_or_default(path, PAM_HEADER)?
+    };
 
     // Remove any existing blocks and insert the new one
     let cleaned_content = remove_fenced_blocks(&base_content);
-    let final_content = insert_block_after_header(cleaned_content, target.config_block());
+    let final_content = insert_block_after_header(cleaned_content, &patch_content);
 
     atomic_write(path, final_content.as_bytes())
 }
 
-/// Removes fingerprint configuration from the specified target
-fn remove_fingerprint_config(target: Target) -> io::Result<()> {
-    let path = Path::new(target.path());
+/// Removes configuration from the specified target path
+fn remove_config(target_path: &str) -> io::Result<()> {
+    let path = Path::new(target_path);
 
     if !path.exists() || !is_allowlisted_path(path) {
         return Ok(()); // Nothing to do
@@ -304,9 +305,9 @@ fn remove_fingerprint_config(target: Target) -> io::Result<()> {
     Ok(())
 }
 
-/// Checks if fingerprint configuration is applied to the specified target
-fn is_fingerprint_applied(target: Target) -> io::Result<bool> {
-    let path = Path::new(target.path());
+/// Checks if configuration is applied to the specified target path
+fn is_config_applied(target_path: &str) -> io::Result<bool> {
+    let path = Path::new(target_path);
 
     if !path.exists() {
         return Ok(false);
@@ -333,126 +334,76 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.cmd {
-        Command::Apply { target } => {
+        Command::Apply { targets } => {
             require_root();
-            match apply_fingerprint_config(target) {
-                Ok(()) => println!(
-                    "Success: applied fingerprint configuration to {}",
-                    target.service()
-                ),
-                Err(e) => {
-                    eprintln!(
-                        "Error applying configuration to {}: {}",
-                        target.service(),
-                        e
-                    );
-                    std::process::exit(1);
+            let mut errors = Vec::new();
+
+            for target_str in &targets {
+                // Try to parse as JSON first
+                let target = match TargetConfig::from_json(target_str) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        // If JSON parsing fails, treat as simple file path for backwards compatibility
+                        TargetConfig::new(target_str.clone())
+                    }
+                };
+
+                match apply_config(&target) {
+                    Ok(()) => println!("Success: applied configuration to {}", target.file),
+                    Err(e) => {
+                        let error =
+                            format!("Error applying configuration to {}: {}", target.file, e);
+                        eprintln!("{}", error);
+                        errors.push(error);
+                    }
                 }
             }
-        }
 
-        Command::Remove { target } => {
-            require_root();
-            match remove_fingerprint_config(target) {
-                Ok(()) => println!(
-                    "Success: removed fingerprint configuration from {}",
-                    target.service()
-                ),
-                Err(e) => {
-                    eprintln!(
-                        "Error removing configuration from {}: {}",
-                        target.service(),
-                        e
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
-
-        Command::Check { target } => match is_fingerprint_applied(target) {
-            Ok(true) => {
-                println!("applied: {}", target.path());
-                std::process::exit(0);
-            }
-            Ok(false) => {
-                println!("not-applied: {}", target.path());
+            if !errors.is_empty() {
                 std::process::exit(1);
             }
-            Err(e) => {
-                eprintln!("Error checking {}: {}", target.path(), e);
-                std::process::exit(2);
-            }
-        },
+        }
 
-        Command::CheckAll => {
-            let targets = [Target::Login, Target::Sudo, Target::Polkit1];
+        Command::Remove { paths } => {
+            require_root();
+            let mut errors = Vec::new();
+
+            for path in &paths {
+                match remove_config(path) {
+                    Ok(()) => println!("Success: removed configuration from {}", path),
+                    Err(e) => {
+                        let error = format!("Error removing configuration from {}: {}", path, e);
+                        eprintln!("{}", error);
+                        errors.push(error);
+                    }
+                }
+            }
+
+            if !errors.is_empty() {
+                std::process::exit(1);
+            }
+        }
+
+        Command::Check { paths } => {
             let mut all_applied = true;
 
-            for target in targets {
-                match is_fingerprint_applied(target) {
+            for path in &paths {
+                match is_config_applied(path) {
                     Ok(true) => {
-                        println!("applied: {}", target.path());
+                        println!("applied: {}", path);
                     }
                     Ok(false) => {
-                        println!("not-applied: {}", target.path());
+                        println!("not-applied: {}", path);
                         all_applied = false;
                     }
                     Err(e) => {
-                        eprintln!("Error checking {}: {}", target.path(), e);
+                        eprintln!("Error checking {}: {}", path, e);
                         std::process::exit(2);
                     }
                 }
             }
 
             std::process::exit(if all_applied { 0 } else { 1 });
-        }
-
-        Command::ApplyAll => {
-            require_root();
-            let targets = [Target::Login, Target::Sudo, Target::Polkit1];
-            let mut errors = Vec::new();
-
-            for target in targets {
-                if let Err(e) = apply_fingerprint_config(target) {
-                    errors.push(format!("Error applying to {}: {}", target.service(), e));
-                } else {
-                    println!(
-                        "Success: applied fingerprint configuration to {}",
-                        target.service()
-                    );
-                }
-            }
-
-            if !errors.is_empty() {
-                for error in &errors {
-                    eprintln!("{}", error);
-                }
-                std::process::exit(1);
-            }
-        }
-
-        Command::RemoveAll => {
-            require_root();
-            let targets = [Target::Login, Target::Sudo, Target::Polkit1];
-            let mut errors = Vec::new();
-
-            for target in targets {
-                if let Err(e) = remove_fingerprint_config(target) {
-                    errors.push(format!("Error removing from {}: {}", target.service(), e));
-                } else {
-                    println!(
-                        "Success: removed fingerprint configuration from {}",
-                        target.service()
-                    );
-                }
-            }
-
-            if !errors.is_empty() {
-                for error in &errors {
-                    eprintln!("{}", error);
-                }
-                std::process::exit(1);
-            }
         }
     }
 }

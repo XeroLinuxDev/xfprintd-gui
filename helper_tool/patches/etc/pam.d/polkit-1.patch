@@ -1,0 +1,3 @@
+auth    [success=1 default=ignore]  pam_succeed_if.so service in sudo:su:su-l tty in :unknown
+auth    sufficient  pam_fprintd.so
+auth    sufficient  pam_unix.so try_first_pass likeauth nullok

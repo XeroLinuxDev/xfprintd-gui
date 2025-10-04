@@ -28,6 +28,9 @@ package() {
   install -Dm755 "target/release/xfprintd-gui-helper" \
     "${pkgdir}/opt/xfprintd-gui/xfprintd-gui-helper"
 
+  # Install patches directory
+  cp -r "helper_tool/patches" "${pkgdir}/opt/xfprintd-gui/"
+
   # Convenience symlink in /usr/bin
   install -d "${pkgdir}/usr/bin"
   ln -s "/opt/xfprintd-gui/xfprintd-gui" "${pkgdir}/usr/bin/xfprintd-gui"
