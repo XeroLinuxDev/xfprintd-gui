@@ -3,15 +3,10 @@ use gtk4::Application;
 use log::info;
 
 mod config;
-mod context;
-mod device_manager;
+mod core;
 mod fingerprints;
-mod fprintd;
-mod pam_helper;
-mod pam_switch;
-mod system;
+mod pam;
 mod ui;
-mod util;
 
 fn main() {
     // Initialize logger

@@ -1,4 +1,4 @@
-use crate::util;
+use crate::core::util;
 use gtk4::prelude::*;
 use gtk4::{ApplicationWindow, Builder, Button, Label};
 use log::{error, info};

@@ -1,9 +1,9 @@
 //! Fingerprint enrollment functionality.
 
 use crate::config;
-use crate::context::FingerprintContext;
-use crate::device_manager::{DeviceError, DeviceManager};
-use crate::fprintd;
+use crate::core::context::FingerprintContext;
+use crate::core::device_manager::{DeviceError, DeviceManager};
+use crate::core::fprintd;
 use gtk4::glib;
 
 use log::{info, warn};
@@ -42,7 +42,7 @@ fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: FingerprintContex
                     lbl.set_markup(&text);
                 }
                 Ok(EnrollmentEvent::EnrollCompleted) => {
-                    crate::ui::refresh_fingerprint_display(ctx_for_refresh.clone());
+                    crate::ui::fingerprint_ui::refresh_fingerprint_display(ctx_for_refresh.clone());
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,

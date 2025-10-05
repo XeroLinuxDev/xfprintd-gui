@@ -1,7 +1,7 @@
 //! Fingerprint removal functionality.
 
-use crate::context::FingerprintContext;
-use crate::device_manager::{DeviceError, DeviceManager};
+use crate::core::context::FingerprintContext;
+use crate::core::device_manager::{DeviceError, DeviceManager};
 
 use gtk4::glib;
 
@@ -130,13 +130,13 @@ fn setup_removal_ui_listener(rx: mpsc::Receiver<RemovalEvent>, ctx: FingerprintC
         Ok(RemovalEvent::Success) => {
             action_label.set_use_markup(true);
             action_label.set_markup("<span color='orange'>Fingerprint deleted.</span>");
-            crate::ui::refresh_fingerprint_display(ctx.clone());
+            crate::ui::fingerprint_ui::refresh_fingerprint_display(ctx.clone());
             glib::ControlFlow::Break
         }
         Ok(RemovalEvent::Error(msg)) => {
             action_label.set_use_markup(true);
             action_label.set_markup(&msg);
-            crate::ui::refresh_fingerprint_display(ctx.clone());
+            crate::ui::fingerprint_ui::refresh_fingerprint_display(ctx.clone());
             glib::ControlFlow::Break
         }
         Err(TryRecvError::Empty) => glib::ControlFlow::Continue,

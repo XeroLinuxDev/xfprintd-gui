@@ -1,6 +1,6 @@
 //! Device management abstraction for fingerprint operations.
 
-use crate::fprintd;
+use crate::core::fprintd;
 use log::{error, info, warn};
 
 /// Error types for device management operations.

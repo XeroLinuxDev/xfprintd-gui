@@ -1,6 +1,6 @@
 //! Generic PAM switch handler functionality.
 
-use crate::pam_helper::PamHelper;
+use crate::pam::helper::PamHelper;
 #[allow(unused_imports)]
 use gtk4::prelude::*;
 use gtk4::{glib, Switch};
@@ -16,7 +16,7 @@ pub struct PamService {
 /// Available PAM services that can be configured.
 pub mod services {
     use super::PamService;
-    use crate::pam_helper::{get_login_path, POLKIT_PATH, SUDO_PATH};
+    use crate::pam::helper::{get_login_path, POLKIT_PATH, SUDO_PATH};
 
     pub fn login() -> PamService {
         PamService {

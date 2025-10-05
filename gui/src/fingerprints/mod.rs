@@ -3,7 +3,7 @@
 pub mod enroll;
 pub mod remove;
 
-use crate::fprintd;
+use crate::core::fprintd;
 use log::{error, info, warn};
 use std::collections::HashSet;
 
