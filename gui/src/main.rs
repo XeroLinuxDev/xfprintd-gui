@@ -3,6 +3,7 @@ use gtk4::Application;
 use log::info;
 
 mod context;
+mod device_manager;
 mod fingerprints;
 mod fprintd;
 mod pam_helper;

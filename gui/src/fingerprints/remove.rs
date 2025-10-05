@@ -1,11 +1,12 @@
 //! Fingerprint removal functionality.
 
 use crate::context::FingerprintContext;
-use crate::fprintd;
+use crate::device_manager::{DeviceError, DeviceManager};
+
 use gtk4::glib;
 
 use gtk4::{prelude::*, ApplicationWindow, Button, CheckButton, Window};
-use log::{error, info, warn};
+use log::info;
 use std::sync::mpsc::{self, TryRecvError};
 
 /// Events sent during removal process.
@@ -146,122 +147,24 @@ fn setup_removal_ui_listener(rx: mpsc::Receiver<RemovalEvent>, ctx: FingerprintC
 /// Spawn async removal task.
 fn spawn_removal_task(finger_key: String, tx: mpsc::Sender<RemovalEvent>, ctx: FingerprintContext) {
     ctx.rt.spawn(async move {
-        info!(
-            "Connecting to fprintd system bus for deletion of '{}'",
-            finger_key
-        );
+        info!("Starting fingerprint deletion process for '{}'", finger_key);
 
-        let client = match connect_to_fprintd_for_removal().await {
-            Ok(client) => client,
-            Err(e) => {
-                let _ = tx.send(RemovalEvent::Error(format!(
-                    "<span color='red'><b>Bus connect failed</b>: {}</span>",
-                    e
-                )));
-                return;
+        let result = DeviceManager::delete_finger(finger_key.clone()).await;
+
+        match result {
+            Ok(()) => {
+                info!("Fingerprint deletion completed successfully");
+                let _ = tx.send(RemovalEvent::Success);
             }
-        };
-
-        let device = match get_fingerprint_device_for_removal(&client).await {
-            Ok(device) => device,
             Err(e) => {
-                let _ = tx.send(RemovalEvent::Error(e));
-                return;
+                let error_msg = match e {
+                    DeviceError::NoDeviceAvailable => {
+                        "<span color='orange'>No fingerprint devices available.</span>".to_string()
+                    }
+                    _ => format!("<span color='red'><b>Delete failed</b>: {}</span>", e),
+                };
+                let _ = tx.send(RemovalEvent::Error(error_msg));
             }
-        };
-
-        if let Err(e) = claim_device_for_removal(&device).await {
-            warn!("⚠️  Failed to claim device for deletion: {}", e);
         }
-
-        perform_fingerprint_deletion(&device, &finger_key, &tx).await;
-        release_device_after_removal(&device).await;
-
-        info!("Fingerprint deletion completed successfully");
-        let _ = tx.send(RemovalEvent::Success);
     });
-}
-
-/// Connect to fprintd system bus for removal operations.
-async fn connect_to_fprintd_for_removal() -> Result<fprintd::Client, Box<dyn std::error::Error>> {
-    match fprintd::Client::system().await {
-        Ok(client) => {
-            info!("Successfully connected to fprintd for deletion");
-            Ok(client)
-        }
-        Err(e) => {
-            error!("Failed to connect to system bus for deletion: {}", e);
-            Err(Box::new(e))
-        }
-    }
-}
-
-/// Get fingerprint device for removal operations.
-async fn get_fingerprint_device_for_removal(
-    client: &fprintd::Client,
-) -> Result<fprintd::Device, String> {
-    info!("Searching for fingerprint device to perform deletion");
-    match fprintd::first_device(client).await {
-        Ok(Some(device)) => {
-            info!("Found fingerprint device for deletion");
-            Ok(device)
-        }
-        Ok(None) => {
-            warn!("No fingerprint devices available for deletion");
-            warn!("Please ensure fingerprint reader is connected");
-            Err("<span color='orange'>No fingerprint devices available.</span>".to_string())
-        }
-        Err(e) => {
-            error!("Failed to enumerate devices for deletion: {}", e);
-            Err(format!(
-                "<span color='red'><b>Failed</b> to enumerate devices: {}</span>",
-                e
-            ))
-        }
-    }
-}
-
-/// Claim device for removal operations.
-async fn claim_device_for_removal(
-    device: &fprintd::Device,
-) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Claiming device for deletion operation");
-    match device.claim("").await {
-        Ok(_) => {
-            info!("Successfully claimed device for deletion");
-            Ok(())
-        }
-        Err(e) => {
-            warn!("Failed to claim device for deletion: {}", e);
-            Err(Box::new(e))
-        }
-    }
-}
-
-/// Perform actual fingerprint deletion.
-async fn perform_fingerprint_deletion(
-    device: &fprintd::Device,
-    finger_key: &str,
-    tx: &mpsc::Sender<RemovalEvent>,
-) {
-    info!("Executing deletion of enrolled finger: '{}'", finger_key);
-    if let Err(e) = device.delete_enrolled_finger(finger_key).await {
-        error!("Failed to delete enrolled finger '{}': {}", finger_key, e);
-        let _ = tx.send(RemovalEvent::Error(format!(
-            "<span color='red'><b>Delete failed</b>: {}</span>",
-            e
-        )));
-    } else {
-        info!("Successfully deleted fingerprint '{}'", finger_key);
-    }
-}
-
-/// Release device after removal operations.
-async fn release_device_after_removal(device: &fprintd::Device) {
-    info!("Releasing device after deletion");
-    if let Err(e) = device.release().await {
-        warn!("Failed to release device after deletion: {}", e);
-    } else {
-        info!("Successfully released device after deletion");
-    }
 }

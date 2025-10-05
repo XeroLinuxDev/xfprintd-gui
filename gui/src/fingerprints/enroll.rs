@@ -1,10 +1,11 @@
 //! Fingerprint enrollment functionality.
 
 use crate::context::FingerprintContext;
+use crate::device_manager::{DeviceError, DeviceManager};
 use crate::fprintd;
 use gtk4::glib;
 
-use log::{error, info, warn};
+use log::{info, warn};
 use std::sync::mpsc::{self, TryRecvError};
 
 const COLOR_PROGRESS: &str = "#a277ff"; // Purple (progress/successful scan)
@@ -69,92 +70,39 @@ fn spawn_enrollment_task(
             finger_key
         );
 
-        let client = match connect_to_fprintd().await {
-            Ok(client) => client,
-            Err(e) => {
-                let _ = tx.send(EnrollmentEvent::SetText(format!(
-                    "Failed to connect to system bus: {}",
-                    e
-                )));
-                return;
-            }
-        };
+        let result = DeviceManager::enroll_finger(finger_key.clone(), |device| {
+            setup_enrollment_listener_sync(device, &tx)
+        })
+        .await;
 
-        let device = match get_fingerprint_device(&client).await {
-            Ok(device) => device,
-            Err(e) => {
-                let _ = tx.send(EnrollmentEvent::SetText(e));
-                return;
-            }
-        };
-
-        if let Err(e) = claim_device(&device).await {
-            let _ = tx.send(EnrollmentEvent::SetText(format!(
-                "Could not claim device: {}",
-                e
-            )));
-            return;
+        if let Err(e) = result {
+            let error_msg = match e {
+                DeviceError::NoDeviceAvailable => {
+                    format!(
+                        "<span foreground='{}'>No fingerprint devices available.</span>",
+                        COLOR_WARNING
+                    )
+                }
+                _ => format!("Failed to start enrollment: {}", e),
+            };
+            let _ = tx.send(EnrollmentEvent::SetText(error_msg));
         }
-
-        setup_enrollment_listener(&device, &tx).await;
-        start_enrollment_process(&device, &finger_key).await;
     });
 }
 
-/// Connect to fprintd system bus.
-async fn connect_to_fprintd() -> Result<fprintd::Client, Box<dyn std::error::Error>> {
-    info!("Connecting to fprintd system bus for enrollment");
-    match fprintd::Client::system().await {
-        Ok(client) => {
-            info!("Successfully connected to fprintd for enrollment");
-            Ok(client)
-        }
-        Err(e) => {
-            error!(
-                "Failed to connect to fprintd system bus during enrollment: {}",
-                e
-            );
-            Err(Box::new(e))
-        }
-    }
-}
+/// Set up enrollment status listener (synchronous wrapper for DeviceManager).
+fn setup_enrollment_listener_sync(
+    device: &fprintd::Device,
+    tx: &mpsc::Sender<EnrollmentEvent>,
+) -> Result<(), DeviceError> {
+    let device_clone = device.clone();
+    let tx_clone = tx.clone();
 
-/// Get first available fingerprint device.
-async fn get_fingerprint_device(client: &fprintd::Client) -> Result<fprintd::Device, String> {
-    info!("Looking for available fingerprint device for enrollment");
-    match fprintd::first_device(client).await {
-        Ok(Some(device)) => {
-            info!("Found fingerprint device, ready for enrollment");
-            Ok(device)
-        }
-        Ok(None) => {
-            warn!("No fingerprint devices available for enrollment");
-            warn!("Please connect a fingerprint reader and try again");
-            Err(format!(
-                "<span foreground='{}'>No fingerprint devices available.</span>",
-                COLOR_WARNING
-            ))
-        }
-        Err(e) => {
-            error!("Failed to enumerate devices during enrollment: {}", e);
-            Err(format!("Failed to enumerate device: {}", e))
-        }
-    }
-}
+    tokio::spawn(async move {
+        setup_enrollment_listener(&device_clone, &tx_clone).await;
+    });
 
-/// Claim fingerprint device for exclusive access.
-async fn claim_device(device: &fprintd::Device) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Claiming fingerprint device for enrollment (current user)");
-    match device.claim("").await {
-        Ok(_) => {
-            info!("Successfully claimed device for enrollment");
-            Ok(())
-        }
-        Err(e) => {
-            error!("Failed to claim device for enrollment: {}", e);
-            Err(Box::new(e))
-        }
-    }
+    Ok(())
 }
 
 /// Set up enrollment status listener.
@@ -267,28 +215,13 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
     });
 }
 
-/// Start actual enrollment process.
-async fn start_enrollment_process(device: &fprintd::Device, finger_key: &str) {
-    info!("Starting enrollment process for finger: '{}'", finger_key);
-    if let Err(e) = device.enroll_start(finger_key).await {
-        error!("Failed to start enrollment for '{}': {}", finger_key, e);
-        let _ = device.enroll_stop().await;
-        let _ = device.release().await;
-    } else {
-        info!("Enrollment started successfully, waiting for finger scans...");
-    }
-}
-
 /// Clean up enrollment device.
 fn cleanup_enrollment_device(device: fprintd::Device) {
     tokio::spawn(async move {
         if let Err(e) = device.enroll_stop().await {
             warn!("Failed to stop enrollment: {}", e);
         }
-        if let Err(e) = device.release().await {
-            warn!("Failed to release device after enrollment: {}", e);
-        } else {
-            info!("Successfully cleaned up after enrollment");
-        }
+        // Device release is now handled by DeviceManager's Drop implementation
+        info!("Enrollment cleanup completed");
     });
 }
