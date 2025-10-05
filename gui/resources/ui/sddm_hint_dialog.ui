@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+
+  <object class="GtkWindow" id="sddm_hint_window">
+    <property name="title">SDDM Fingerprint Login Hint</property>
+    <property name="default-width">520</property>
+    <property name="default-height">300</property>
+    <property name="modal">true</property>
+    <property name="resizable">false</property>
+
+    <child>
+      <object class="GtkBox" id="sddm_hint_root_box">
+        <property name="orientation">vertical</property>
+        <property name="spacing">20</property>
+        <property name="margin-top">28</property>
+        <property name="margin-bottom">28</property>
+        <property name="margin-start">30</property>
+        <property name="margin-end">30</property>
+
+        <child>
+          <object class="GtkBox" id="sddm_hint_title_box">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">10</property>
+            <property name="halign">center</property>
+            <child>
+              <object class="GtkImage" id="sddm_hint_icon">
+                <property name="icon-name">dialog-information-symbolic</property>
+                <property name="pixel-size">40</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="sddm_hint_title_label">
+                <property name="label">Fingerprint Login with SDDM</property>
+                <property name="halign">center</property>
+                <style>
+                  <class name="title-2"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkLabel" id="sddm_hint_message">
+            <property name="use-markup">true</property>
+            <property name="wrap">true</property>
+            <property name="justify">center</property>
+            <property name="halign">center</property>
+            <property name="label"><![CDATA[<b>SDDM</b> greeter currently doesn’t <i>natively</i> support fingerprint login, so it will not display a “scan your finger” prompt.
+
+To unlock using your fingerprint:
+1. Select your user (if needed)
+2. Leave the password field blank
+3. Press <b>Enter</b> once
+4. Scan your registered finger
+
+This is a temporary hack until native support is added (if ever, lol).]]></property>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkBox" id="sddm_hint_button_box">
+            <property name="orientation">horizontal</property>
+            <property name="halign">center</property>
+            <property name="spacing">12</property>
+            <child>
+              <object class="GtkButton" id="sddm_hint_close_button">
+                <property name="label">Close</property>
+                <property name="width-request">100</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+
+      </object>
+    </child>
+  </object>
+</interface>

@@ -8,7 +8,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
-    FlowBox, Image, Justification, Label, Orientation, Overlay, Stack, Switch,
+    FlowBox, Image, Justification, Label, Orientation, Overlay, Stack, Switch, Window,
 };
 use log::{error, info, warn};
 
@@ -71,6 +71,11 @@ pub fn setup_application_ui(app: &Application) {
     if is_sddm_enabled() {
         info!("SDDM detected - showing login info hint button");
         login_info_btn.set_visible(true);
+        // Show popup with detailed instructions when clicked
+        let parent = window.clone();
+        login_info_btn.connect_clicked(move |_| {
+            show_sddm_hint(&parent);
+        });
     } else {
         info!("SDDM not detected - hiding login info hint button");
         login_info_btn.set_visible(false);
@@ -382,6 +387,29 @@ fn show_info_dialog(main_window: &ApplicationWindow) {
     });
 
     info_window.show();
+}
+
+/// Show SDDM fingerprint usage hint dialog (loaded from UI resource).
+fn show_sddm_hint(parent: &ApplicationWindow) {
+    info!("Displaying SDDM fingerprint hint dialog");
+    let builder = Builder::from_resource("/xyz/xerolinux/xfprintd_gui/ui/sddm_hint_dialog.ui");
+
+    let window: Window = builder
+        .object("sddm_hint_window")
+        .expect("Failed to get sddm_hint_window");
+
+    let close_button: Button = builder
+        .object("sddm_hint_close_button")
+        .expect("Failed to get sddm_hint_close_button");
+
+    window.set_transient_for(Some(parent));
+
+    let window_clone = window.clone();
+    close_button.connect_clicked(move |_| {
+        window_clone.close();
+    });
+
+    window.show();
 }
 
 /// Set up fingerprint management buttons.
