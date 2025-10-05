@@ -7,7 +7,6 @@ use crate::core::fprintd;
 use gtk4::glib;
 
 use log::{info, warn};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -126,120 +125,110 @@ async fn setup_enrollment_listener(
     let device_for_cleanup = device.clone();
     let tx_status = tx.clone();
 
-    tokio::spawn(async move {
-        info!("Setting up enrollment status listener for real-time feedback");
-        // Track progressive successful stages (we only show how many good scans were captured so far).
-        let stage_count = Arc::new(AtomicUsize::new(0));
-        let stage_count_clone = stage_count.clone();
+    info!("Setting up enrollment status listener for real-time feedback");
+    // Track progressive successful stages (we only show how many good scans were captured so far).
+    let mut stage_count: usize = 0usize;
 
-        let _ = device_for_listener
-            .listen_enroll_status(move |evt| {
-                info!(
-                    "Enrollment status update: result='{}', done={}",
-                    evt.result, evt.done
-                );
+    let _ = device_for_listener
+        .listen_enroll_status(move |evt| {
+            info!(
+                "Enrollment status update: result='{}', done={}",
+                evt.result, evt.done
+            );
 
-                let mut _message: Option<String> = None;
+            let mut _message: Option<String> = None;
 
-                match evt.result.as_str() {
-                    "enroll-stage-passed" => {
-                        let count = stage_count_clone.fetch_add(1, Ordering::SeqCst) + 1;
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
-                            config::colors().progress,
-                            count
-                        ));
-                    }
-                    "enroll-remove-and-retry" => {
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>⚠️  Retry scan {}.</b> Lift your finger completely, reposition (centered & flat), then place again…",
-                            config::colors().warning,
-                            count + 1
-                        ));
-                    }
-                    "enroll-swipe-too-short" => {
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>👆 Swipe too short.</b> Try a longer, smoother swipe (still on scan {}).",
-                            config::colors().warning,
-                            count + 1
-                        ));
-                    }
-                    "enroll-finger-not-centered" => {
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>🎯 Not centered.</b> Re‑place finger centered & flat (scan {}).",
-                            config::colors().warning,
-                            count + 1
-                        ));
-                    }
-                    "enroll-duplicate" => {
-                        _message = Some(
-                            format!(
-                                "<span foreground='{}'><b>🔄 Already enrolled!</b> Choose a different finger.</span>",
-                                config::colors().warning
-                            )
-                        );
-                    }
-                    "enroll-data-full" => {
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>📊 Processing captured data…</b> ({} scans so far)</span>",
-                            config::colors().process,
-                            count
-                        ));
-                    }
-                    "enroll-failed" => {
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>❌ Enrollment failed.</b> Please try again.</span>",
-                            config::colors().error
-                        ));
-                    }
-                    "enroll-completed" => {
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>🎉 Enrollment complete!</b> Captured {} quality scans.</span>",
-                            config::colors().success,
-                            count
-                        ));
-                    }
-                    other => {
-                        // Fallback / unknown statuses
-                        let count = stage_count_clone.load(Ordering::SeqCst);
-                        _message = Some(format!(
-                            "<span foreground='{}'><b>📊 Status:</b> {} (scan {})</span>",
-                            config::colors().neutral,
-                            other,
-                            count.max(1)
-                        ));
-                    }
+            match evt.result.as_str() {
+                "enroll-stage-passed" => {
+                    stage_count += 1;
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
+                        config::colors().progress,
+                        stage_count
+                    ));
                 }
-
-                if let Some(text) = _message {
-                    let _ = tx_status.send(EnrollmentEvent::SetText(text));
+                "enroll-remove-and-retry" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>⚠️  Retry scan {}.</b> Lift your finger completely, reposition (centered & flat), then place again…",
+                        config::colors().warning,
+                        stage_count + 1
+                    ));
                 }
-
-                if evt.result == "enroll-completed" {
-                    let count = stage_count.load(Ordering::SeqCst);
-                    info!(
-                        "Fingerprint enrollment completed successfully after {} stages",
-                        count
+                "enroll-swipe-too-short" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>👆 Swipe too short.</b> Try a longer, smoother swipe (still on scan {}).",
+                        config::colors().warning,
+                        stage_count + 1
+                    ));
+                }
+                "enroll-finger-not-centered" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>🎯 Not centered.</b> Re‑place finger centered & flat (scan {}).",
+                        config::colors().warning,
+                        stage_count + 1
+                    ));
+                }
+                "enroll-duplicate" => {
+                    _message = Some(
+                        format!(
+                            "<span foreground='{}'><b>🔄 Already enrolled!</b> Choose a different finger.</span>",
+                            config::colors().warning
+                        )
                     );
-                    let _ = tx_status.send(EnrollmentEvent::EnrollCompleted);
                 }
+                "enroll-data-full" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>📊 Processing captured data…</b> ({} scans so far)</span>",
+                        config::colors().process,
+                        stage_count
+                    ));
+                }
+                "enroll-failed" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>❌ Enrollment failed.</b> Please try again.</span>",
+                        config::colors().error
+                    ));
+                }
+                "enroll-completed" => {
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>🎉 Enrollment complete!</b> Captured {} quality scans.</span>",
+                        config::colors().success,
+                        stage_count
+                    ));
+                }
+                other => {
+                    // Fallback / unknown statuses
+                    _message = Some(format!(
+                        "<span foreground='{}'><b>📊 Status:</b> {} (scan {})</span>",
+                        config::colors().neutral,
+                        other,
+                        stage_count.max(1)
+                    ));
+                }
+            }
 
-                if evt.done {
-                    info!("Enrollment process finished, cleaning up device");
-                    let device_clone = device_for_cleanup.clone();
-                    let manager_clone = device_manager.clone();
-                    tokio::spawn(async move {
-                        cleanup_enrollment_device(device_clone, manager_clone).await;
-                    });
-                }
-            })
-            .await;
-    });
+            if let Some(text) = _message {
+                let _ = tx_status.send(EnrollmentEvent::SetText(text));
+            }
+
+            if evt.result == "enroll-completed" {
+                info!(
+                    "Fingerprint enrollment completed successfully after {} stages",
+                    stage_count
+                );
+                let _ = tx_status.send(EnrollmentEvent::EnrollCompleted);
+            }
+
+            if evt.done {
+                info!("Enrollment process finished, cleaning up device");
+                let device_clone = device_for_cleanup.clone();
+                let manager_clone = device_manager.clone();
+                tokio::spawn(async move {
+                    cleanup_enrollment_device(device_clone, manager_clone).await;
+                });
+            }
+        })
+        .await;
 }
 
 /// Clean up enrollment device.
