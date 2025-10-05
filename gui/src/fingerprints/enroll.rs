@@ -39,20 +39,40 @@ fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: FingerprintContex
     let lbl = ctx.ui.labels.action.clone();
     let ctx_for_refresh = ctx.clone();
 
-    glib::idle_add_local(move || {
+    // Use timeout_add for more frequent polling during enrollment
+    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+        let mut has_messages = false;
+
+        // Process all available messages in this cycle
         loop {
             match rx.try_recv() {
                 Ok(EnrollmentEvent::SetText(text)) => {
+                    info!(
+                        "UI received message: {}",
+                        text.chars().take(50).collect::<String>()
+                    );
                     lbl.set_use_markup(true);
                     lbl.set_markup(&text);
+                    info!("UI updated label with new text");
+                    has_messages = true;
                 }
                 Ok(EnrollmentEvent::EnrollCompleted) => {
+                    info!("UI received enrollment completed event");
                     crate::ui::fingerprint_ui::refresh_fingerprint_display(ctx_for_refresh.clone());
+                    has_messages = true;
                 }
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+                Err(TryRecvError::Disconnected) => {
+                    warn!("UI message channel disconnected");
+                    return glib::ControlFlow::Break;
+                }
             }
         }
+
+        if has_messages {
+            info!("Processed UI messages in this cycle");
+        }
+
         glib::ControlFlow::Continue
     });
 }
@@ -138,9 +158,12 @@ async fn setup_enrollment_listener(
 
             let mut _message: Option<String> = None;
 
+            info!("Processing enrollment event: '{}', current stage_count: {}", evt.result, stage_count);
+
             match evt.result.as_str() {
                 "enroll-stage-passed" => {
                     stage_count += 1;
+                    info!("Stage passed! New stage_count: {}", stage_count);
                     _message = Some(format!(
                         "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
                         config::colors().progress,
@@ -208,7 +231,11 @@ async fn setup_enrollment_listener(
             }
 
             if let Some(text) = _message {
-                let _ = tx_status.send(EnrollmentEvent::SetText(text));
+                info!("Sending status message: {}", text.chars().take(50).collect::<String>());
+                match tx_status.send(EnrollmentEvent::SetText(text)) {
+                    Ok(_) => info!("Message sent successfully"),
+                    Err(e) => warn!("Failed to send message: {}", e),
+                }
             }
 
             if evt.result == "enroll-completed" {
