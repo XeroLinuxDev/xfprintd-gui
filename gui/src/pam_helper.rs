@@ -1,3 +1,4 @@
+use crate::config;
 use log::{debug, error, info, warn};
 use std::io;
 use std::process::Command;
@@ -5,26 +6,21 @@ use std::process::Command;
 /// Utility for managing PAM fingerprint configurations.
 pub struct PamHelper;
 
-/// Helper binary path.
-const HELPER_PATH: &str = "/opt/xfprintd-gui/xfprintd-gui-helper";
-
-/// PAM file paths.
+/// PAM file paths (using configuration).
 pub const SUDO_PATH: &str = "/etc/pam.d/sudo";
 pub const POLKIT_PATH: &str = "/etc/pam.d/polkit-1";
-
-// Login manager paths (dynamically selected)
-const LOGIN_PATH_GENERIC: &str = "/etc/pam.d/login";
-const LOGIN_PATH_SDDM: &str = "/etc/pam.d/sddm";
+pub const LOGIN_PATH: &str = "/etc/pam.d/login";
+pub const SDDM_PATH: &str = "/etc/pam.d/sddm";
 
 /// Returns the appropriate login PAM path based on active display manager.
 /// Uses SDDM path if sddm.service is enabled, otherwise uses generic login path.
 pub fn get_login_path() -> &'static str {
     if is_sddm_enabled() {
-        info!("SDDM is enabled, using /etc/pam.d/sddm");
-        LOGIN_PATH_SDDM
+        info!("SDDM is enabled, using {}", SDDM_PATH);
+        SDDM_PATH
     } else {
-        info!("SDDM not detected, using /etc/pam.d/login");
-        LOGIN_PATH_GENERIC
+        info!("SDDM not detected, using {}", LOGIN_PATH);
+        LOGIN_PATH
     }
 }
 
@@ -61,7 +57,7 @@ impl PamHelper {
         let login_path = get_login_path();
         info!("Using login path: {}", login_path);
 
-        match Command::new(HELPER_PATH)
+        match Command::new(config::helper::BINARY_PATH)
             .arg("check")
             .arg(login_path)
             .arg(SUDO_PATH)
@@ -79,7 +75,7 @@ impl PamHelper {
                 for line in stdout.lines() {
                     if let Some(path) = line.strip_prefix("applied: ") {
                         // Check both possible login paths
-                        if path == LOGIN_PATH_GENERIC || path == LOGIN_PATH_SDDM {
+                        if path == LOGIN_PATH || path == SDDM_PATH {
                             login = true;
                             info!("Login PAM configuration: ENABLED ({})", path);
                         } else {
@@ -99,7 +95,7 @@ impl PamHelper {
                         }
                     } else if let Some(path) = line.strip_prefix("not-applied: ") {
                         // Check both possible login paths
-                        if path == LOGIN_PATH_GENERIC || path == LOGIN_PATH_SDDM {
+                        if path == LOGIN_PATH || path == SDDM_PATH {
                             info!("Login PAM configuration: DISABLED ({})", path);
                         } else {
                             match path {
@@ -146,7 +142,11 @@ impl PamHelper {
     fn is_configured(path: &str) -> bool {
         info!("Checking PAM configuration for path: '{}'", path);
 
-        match Command::new(HELPER_PATH).arg("check").arg(path).status() {
+        match Command::new(config::helper::BINARY_PATH)
+            .arg("check")
+            .arg(path)
+            .status()
+        {
             Ok(status) => {
                 let configured = status.success();
                 if configured {
@@ -163,7 +163,7 @@ impl PamHelper {
                 error!("Failed to check PAM configuration for '{}': {}", path, e);
                 error!(
                     "Helper tool might not be installed or accessible at: {}",
-                    HELPER_PATH
+                    config::helper::BINARY_PATH
                 );
                 false
             }
@@ -189,7 +189,7 @@ impl PamHelper {
         };
 
         let output = Command::new("pkexec")
-            .arg(HELPER_PATH)
+            .arg(config::helper::BINARY_PATH)
             .arg("apply")
             .arg(&json_arg)
             .output()
@@ -229,7 +229,7 @@ impl PamHelper {
         info!("Requesting root privileges via pkexec");
 
         let output = Command::new("pkexec")
-            .arg(HELPER_PATH)
+            .arg(config::helper::BINARY_PATH)
             .arg("remove")
             .arg(path)
             .output()

@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::Application;
 use log::info;
 
+mod config;
 mod context;
 mod device_manager;
 mod fingerprints;
@@ -17,13 +18,14 @@ fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
 
     info!(
-        "Starting XFPrintD GUI Application v{}",
-        env!("CARGO_PKG_VERSION")
+        "Starting {} v{}",
+        config::app_info::NAME,
+        config::app_info::VERSION
     );
-    info!("Application ID: xyz.xerolinux.xfprintd_gui");
+    info!("Application ID: {}", config::app_info::ID);
 
     let app = Application::builder()
-        .application_id("xyz.xerolinux.xfprintd_gui")
+        .application_id(config::app_info::ID)
         .build();
 
     app.connect_activate(ui::setup_application_ui);

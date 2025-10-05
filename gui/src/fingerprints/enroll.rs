@@ -1,5 +1,6 @@
 //! Fingerprint enrollment functionality.
 
+use crate::config;
 use crate::context::FingerprintContext;
 use crate::device_manager::{DeviceError, DeviceManager};
 use crate::fprintd;
@@ -7,13 +8,6 @@ use gtk4::glib;
 
 use log::{info, warn};
 use std::sync::mpsc::{self, TryRecvError};
-
-const COLOR_PROGRESS: &str = "#a277ff"; // Purple (progress/successful scan)
-const COLOR_WARNING: &str = "#ff6ac1"; // Pink (retry / adjustment)
-const COLOR_PROCESS: &str = "#5ea2ff"; // Blue (processing / neutral status)
-const COLOR_COMPLETE: &str = "#a277ff"; // Reuse purple for completion
-const COLOR_FAIL: &str = "#ff4d6d"; // Accent failure
-const COLOR_NEUTRAL: &str = "#8a8f98"; // Neutral / fallback
 
 /// Events sent during enrollment process.
 #[derive(Clone)]
@@ -30,7 +24,7 @@ pub fn start_enrollment(finger_key: String, ctx: FingerprintContext) {
     // We don't yet know required stages (varies by device), so we show a generic Step 1 message.
     let _ = tx.send(EnrollmentEvent::SetText(format!(
         "<b><span foreground='{}'>🔍 Scan 1</span> - Place your finger firmly on the scanner…</b>",
-        COLOR_PROGRESS
+        config::colors().progress
     )));
     spawn_enrollment_task(finger_key, tx, ctx);
 }
@@ -80,7 +74,7 @@ fn spawn_enrollment_task(
                 DeviceError::NoDeviceAvailable => {
                     format!(
                         "<span foreground='{}'>No fingerprint devices available.</span>",
-                        COLOR_WARNING
+                        config::colors().warning
                     )
                 }
                 _ => format!("Failed to start enrollment: {}", e),
@@ -130,28 +124,28 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
                         stage_count += 1;
                         _message = Some(format!(
                             "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
-                            COLOR_PROGRESS,
+                            config::colors().progress,
                             stage_count
                         ));
                     }
                     "enroll-remove-and-retry" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>⚠️  Retry scan {}.</b> Lift your finger completely, reposition (centered & flat), then place again…",
-                            COLOR_WARNING,
+                            config::colors().warning,
                             stage_count + 1
                         ));
                     }
                     "enroll-swipe-too-short" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>👆 Swipe too short.</b> Try a longer, smoother swipe (still on scan {}).",
-                            COLOR_WARNING,
+                            config::colors().warning,
                             stage_count + 1
                         ));
                     }
                     "enroll-finger-not-centered" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>🎯 Not centered.</b> Re‑place finger centered & flat (scan {}).",
-                            COLOR_WARNING,
+                            config::colors().warning,
                             stage_count + 1
                         ));
                     }
@@ -159,27 +153,27 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
                         _message = Some(
                             format!(
                                 "<span foreground='{}'><b>🔄 Already enrolled!</b> Choose a different finger.</span>",
-                                COLOR_WARNING
+                                config::colors().warning
                             )
                         );
                     }
                     "enroll-data-full" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>📊 Processing captured data…</b> ({} scans so far)</span>",
-                            COLOR_PROCESS,
+                            config::colors().process,
                             stage_count
                         ));
                     }
                     "enroll-failed" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>❌ Enrollment failed.</b> Please try again.</span>",
-                            COLOR_FAIL
+                            config::colors().error
                         ));
                     }
                     "enroll-completed" => {
                         _message = Some(format!(
                             "<span foreground='{}'><b>🎉 Enrollment complete!</b> Captured {} quality scans.</span>",
-                            COLOR_COMPLETE,
+                            config::colors().success,
                             stage_count
                         ));
                     }
@@ -187,7 +181,7 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
                         // Fallback / unknown statuses
                         _message = Some(format!(
                             "<span foreground='{}'><b>📊 Status:</b> {} (scan {})</span>",
-                            COLOR_NEUTRAL,
+                            config::colors().neutral,
                             other,
                             stage_count.max(1)
                         ));

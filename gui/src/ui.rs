@@ -105,7 +105,7 @@ fn setup_resources_and_theme() {
     }
 }
 
-/// Creates the main application window
+/// Create main application window.
 fn create_main_window(app: &Application, builder: &Builder) -> ApplicationWindow {
     let window: ApplicationWindow = builder
         .object("app_window")
