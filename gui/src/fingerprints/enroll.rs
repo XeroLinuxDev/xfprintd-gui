@@ -1,15 +1,11 @@
 //! Fingerprint enrollment functionality.
 
+use crate::context::FingerprintContext;
 use crate::fprintd;
 use gtk4::glib;
 
-use gtk4::{Button, FlowBox, Label, Stack, Switch};
 use log::{error, info, warn};
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::mpsc::{self, TryRecvError};
-use std::sync::Arc;
-use tokio::runtime::Runtime;
 
 const COLOR_PROGRESS: &str = "#a277ff"; // Purple (progress/successful scan)
 const COLOR_WARNING: &str = "#ff6ac1"; // Pink (retry / adjustment)
@@ -17,22 +13,6 @@ const COLOR_PROCESS: &str = "#5ea2ff"; // Blue (processing / neutral status)
 const COLOR_COMPLETE: &str = "#a277ff"; // Reuse purple for completion
 const COLOR_FAIL: &str = "#ff4d6d"; // Accent failure
 const COLOR_NEUTRAL: &str = "#8a8f98"; // Neutral / fallback
-
-/// UI context for enrollment operations.
-#[derive(Clone)]
-pub struct EnrollmentContext {
-    pub rt: Arc<Runtime>,
-    pub flow: FlowBox,
-    pub stack: Stack,
-    pub sw_login: Switch,
-    pub sw_term: Switch,
-    pub sw_prompt: Switch,
-    pub selected_finger: Rc<RefCell<Option<String>>>,
-    pub finger_label: Label,
-    pub action_label: Label,
-    pub button_add: Button,
-    pub button_delete: Button,
-}
 
 /// Events sent during enrollment process.
 #[derive(Clone)]
@@ -42,17 +22,21 @@ pub enum EnrollmentEvent {
 }
 
 /// Start fingerprint enrollment process for specified finger.
-pub fn start_enrollment(finger_key: String, ctx: EnrollmentContext) {
+pub fn start_enrollment(finger_key: String, ctx: FingerprintContext) {
     let (tx, rx) = mpsc::channel::<EnrollmentEvent>();
 
     setup_ui_listener(rx, ctx.clone());
-    send_initial_message(&tx);
+    // We don't yet know required stages (varies by device), so we show a generic Step 1 message.
+    let _ = tx.send(EnrollmentEvent::SetText(format!(
+        "<b><span foreground='{}'>🔍 Scan 1</span> - Place your finger firmly on the scanner…</b>",
+        COLOR_PROGRESS
+    )));
     spawn_enrollment_task(finger_key, tx, ctx);
 }
 
 /// Set up UI listener for enrollment status updates.
-fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: EnrollmentContext) {
-    let lbl = ctx.action_label.clone();
+fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: FingerprintContext) {
+    let lbl = ctx.ui.labels.action.clone();
     let ctx_for_refresh = ctx.clone();
 
     glib::idle_add_local(move || {
@@ -63,7 +47,7 @@ fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: EnrollmentContext
                     lbl.set_markup(&text);
                 }
                 Ok(EnrollmentEvent::EnrollCompleted) => {
-                    refresh_fingerprint_ui(ctx_for_refresh.clone());
+                    crate::ui::refresh_fingerprint_display(ctx_for_refresh.clone());
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
@@ -73,20 +57,11 @@ fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: EnrollmentContext
     });
 }
 
-/// Send initial enrollment message to UI.
-fn send_initial_message(tx: &mpsc::Sender<EnrollmentEvent>) {
-    // We don't yet know required stages (varies by device), so we show a generic Step 1 message.
-    let _ = tx.send(EnrollmentEvent::SetText(format!(
-        "<b><span foreground='{}'>🔍 Scan 1</span> - Place your finger firmly on the scanner…</b>",
-        COLOR_PROGRESS
-    )));
-}
-
 /// Spawn async enrollment task.
 fn spawn_enrollment_task(
     finger_key: String,
     tx: mpsc::Sender<EnrollmentEvent>,
-    ctx: EnrollmentContext,
+    ctx: FingerprintContext,
 ) {
     ctx.rt.spawn(async move {
         info!(
@@ -97,7 +72,10 @@ fn spawn_enrollment_task(
         let client = match connect_to_fprintd().await {
             Ok(client) => client,
             Err(e) => {
-                send_error_message(&tx, &format!("Failed to connect to system bus: {}", e));
+                let _ = tx.send(EnrollmentEvent::SetText(format!(
+                    "Failed to connect to system bus: {}",
+                    e
+                )));
                 return;
             }
         };
@@ -105,13 +83,16 @@ fn spawn_enrollment_task(
         let device = match get_fingerprint_device(&client).await {
             Ok(device) => device,
             Err(e) => {
-                send_error_message(&tx, &e);
+                let _ = tx.send(EnrollmentEvent::SetText(e));
                 return;
             }
         };
 
         if let Err(e) = claim_device(&device).await {
-            send_error_message(&tx, &format!("Could not claim device: {}", e));
+            let _ = tx.send(EnrollmentEvent::SetText(format!(
+                "Could not claim device: {}",
+                e
+            )));
             return;
         }
 
@@ -310,26 +291,4 @@ fn cleanup_enrollment_device(device: fprintd::Device) {
             info!("Successfully cleaned up after enrollment");
         }
     });
-}
-
-/// Send error message to UI.
-fn send_error_message(tx: &mpsc::Sender<EnrollmentEvent>, message: &str) {
-    let _ = tx.send(EnrollmentEvent::SetText(message.to_string()));
-}
-
-/// Refresh fingerprint UI after enrollment completion.
-fn refresh_fingerprint_ui(ctx: EnrollmentContext) {
-    crate::ui::refresh_fingerprint_display(
-        ctx.rt,
-        ctx.flow,
-        ctx.stack,
-        ctx.selected_finger,
-        ctx.finger_label,
-        ctx.action_label,
-        ctx.button_add,
-        ctx.button_delete,
-        ctx.sw_login,
-        ctx.sw_term,
-        ctx.sw_prompt,
-    );
 }

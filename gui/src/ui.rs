@@ -1,5 +1,6 @@
 //! User Interface handling functionality.
 
+use crate::context::FingerprintContext;
 use crate::fingerprints::{enroll, remove};
 use crate::pam_helper::{get_login_path, is_sddm_enabled, PamHelper, POLKIT_PATH, SUDO_PATH};
 use crate::util;
@@ -22,17 +23,7 @@ use tokio::runtime::Runtime;
 /// Main application context with UI elements and runtime.
 #[derive(Clone)]
 pub struct AppContext {
-    pub rt: Arc<Runtime>,
-    pub stack: Stack,
-    pub fingers_flow: FlowBox,
-    pub selected_finger: Rc<RefCell<Option<String>>>,
-    pub finger_label: Label,
-    pub action_label: Label,
-    pub button_add: Button,
-    pub button_delete: Button,
-    pub sw_login: Switch,
-    pub sw_term: Switch,
-    pub sw_prompt: Switch,
+    pub fingerprint_ctx: FingerprintContext,
 }
 
 /// Initialize and set up main application UI.
@@ -82,12 +73,13 @@ pub fn setup_application_ui(app: &Application) {
     }
     setup_navigation_buttons(&ctx, &builder);
     setup_info_button(&window, &builder);
-    setup_fingerprint_management(&ctx, &builder);
+    setup_enroll_button(&ctx.fingerprint_ctx.ui.buttons.add, &ctx.fingerprint_ctx);
+    setup_delete_button(&ctx.fingerprint_ctx.ui.buttons.delete, &ctx.fingerprint_ctx);
 
     perform_initial_fingerprint_scan(&ctx);
 
     info!("Setting initial view to main page");
-    ctx.stack.set_visible_child_name("main");
+    ctx.fingerprint_ctx.ui.stack.set_visible_child_name("main");
     info!("XFPrintD GUI application startup complete");
 }
 
@@ -137,6 +129,7 @@ fn setup_ui_components(
     let fingers_flow: FlowBox = builder
         .object("fingers_flow")
         .expect("Failed to get fingers_flow");
+    let selected_finger = Rc::new(RefCell::new(None));
     let finger_label: Label = builder
         .object("finger_label")
         .expect("Failed to get finger_label");
@@ -155,32 +148,28 @@ fn setup_ui_components(
         .object("sw_prompt")
         .expect("Failed to get sw_prompt");
 
-    let selected_finger: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    info!("All UI components successfully initialized from Glade builder");
 
-    AppContext {
-        rt,
-        stack,
-        fingers_flow,
-        selected_finger,
-        finger_label,
-        action_label,
-        button_add,
-        button_delete,
-        sw_login,
-        sw_term,
-        sw_prompt,
-    }
+    // Assemble UI components using builder pattern
+    let switches = crate::context::PamSwitches::new(sw_login, sw_term, sw_prompt);
+    let labels = crate::context::FingerprintLabels::new(finger_label, action_label);
+    let buttons = crate::context::FingerprintButtons::new(button_add, button_delete);
+    let ui = crate::context::UiComponents::new(fingers_flow, stack, switches, labels, buttons);
+
+    let fingerprint_ctx = FingerprintContext::new(rt, ui, selected_finger);
+
+    AppContext { fingerprint_ctx }
 }
 
 /// Set up PAM authentication switches.
 fn setup_pam_switches(ctx: &AppContext) {
-    info!("Checking current PAM authentication configurations");
+    info!("Checking current PAM configurations for switches initialization");
+
     let (login_configured, sudo_configured, polkit_configured) =
         PamHelper::check_all_configurations();
 
-    info!("PAM Configuration Status:");
     info!(
-        "- Login authentication: {}",
+        "PAM Login Authentication: {}",
         if login_configured {
             "ENABLED"
         } else {
@@ -188,7 +177,7 @@ fn setup_pam_switches(ctx: &AppContext) {
         }
     );
     info!(
-        "- Sudo authentication: {}",
+        "PAM Sudo Authentication: {}",
         if sudo_configured {
             "ENABLED"
         } else {
@@ -196,7 +185,7 @@ fn setup_pam_switches(ctx: &AppContext) {
         }
     );
     info!(
-        "- Polkit authentication: {}",
+        "PAM Polkit Authentication: {}",
         if polkit_configured {
             "ENABLED"
         } else {
@@ -204,121 +193,143 @@ fn setup_pam_switches(ctx: &AppContext) {
         }
     );
 
-    ctx.sw_login.set_active(login_configured);
-    ctx.sw_term.set_active(sudo_configured);
-    ctx.sw_prompt.set_active(polkit_configured);
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .login
+        .set_active(login_configured);
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .term
+        .set_active(sudo_configured);
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .prompt
+        .set_active(polkit_configured);
 
     info!("Temporarily disabling PAM switches until fingerprint enrollment check");
-    ctx.sw_login.set_sensitive(false);
-    ctx.sw_term.set_sensitive(false);
-    ctx.sw_prompt.set_sensitive(false);
+    ctx.fingerprint_ctx.set_pam_switches_sensitive(false);
 
     setup_pam_switch_handlers(ctx);
 }
 
 /// Set up PAM switch event handlers.
 fn setup_pam_switch_handlers(ctx: &AppContext) {
-    ctx.sw_login.connect_state_set(move |_switch, state| {
-        if state {
-            info!("User enabled login fingerprint authentication switch");
-        } else {
-            info!("User disabled login fingerprint authentication switch");
-        }
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .login
+        .connect_state_set(move |_switch, state| {
+            if state {
+                info!("User enabled login fingerprint authentication switch");
+            } else {
+                info!("User disabled login fingerprint authentication switch");
+            }
 
-        let login_path = get_login_path();
-        let res = if state {
-            PamHelper::apply_configuration(login_path)
-        } else {
-            PamHelper::remove_configuration(login_path)
-        };
+            let login_path = get_login_path();
+            let res = if state {
+                PamHelper::apply_configuration(login_path)
+            } else {
+                PamHelper::remove_configuration(login_path)
+            };
 
-        match res {
-            Ok(()) => {
-                if state {
-                    info!("Successfully enabled fingerprint authentication for login");
-                } else {
-                    info!("Successfully disabled fingerprint authentication for login");
+            match res {
+                Ok(()) => {
+                    if state {
+                        info!("Successfully enabled fingerprint authentication for login");
+                    } else {
+                        info!("Successfully disabled fingerprint authentication for login");
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to {} fingerprint authentication for login: {}",
+                        if state { "enable" } else { "disable" },
+                        e
+                    );
+                    return gtk4::glib::Propagation::Stop;
                 }
             }
-            Err(e) => {
-                error!(
-                    "Failed to {} fingerprint authentication for login: {}",
-                    if state { "enable" } else { "disable" },
-                    e
-                );
-                return gtk4::glib::Propagation::Stop;
-            }
-        }
-        gtk4::glib::Propagation::Proceed
-    });
+            gtk4::glib::Propagation::Proceed
+        });
 
     // Sudo switch handler
-    ctx.sw_term.connect_state_set(move |_switch, state| {
-        if state {
-            info!("User enabled sudo fingerprint authentication switch");
-        } else {
-            info!("User disabled sudo fingerprint authentication switch");
-        }
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .term
+        .connect_state_set(move |_switch, state| {
+            if state {
+                info!("User enabled sudo fingerprint authentication switch");
+            } else {
+                info!("User disabled sudo fingerprint authentication switch");
+            }
 
-        let res = if state {
-            PamHelper::apply_configuration(SUDO_PATH)
-        } else {
-            PamHelper::remove_configuration(SUDO_PATH)
-        };
+            let res = if state {
+                PamHelper::apply_configuration(SUDO_PATH)
+            } else {
+                PamHelper::remove_configuration(SUDO_PATH)
+            };
 
-        match res {
-            Ok(()) => {
-                if state {
-                    info!("Successfully enabled fingerprint authentication for sudo");
-                } else {
-                    info!("Successfully disabled fingerprint authentication for sudo");
+            match res {
+                Ok(()) => {
+                    if state {
+                        info!("Successfully enabled fingerprint authentication for sudo");
+                    } else {
+                        info!("Successfully disabled fingerprint authentication for sudo");
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to {} fingerprint authentication for sudo: {}",
+                        if state { "enable" } else { "disable" },
+                        e
+                    );
+                    return gtk4::glib::Propagation::Stop;
                 }
             }
-            Err(e) => {
-                error!(
-                    "Failed to {} fingerprint authentication for sudo: {}",
-                    if state { "enable" } else { "disable" },
-                    e
-                );
-                return gtk4::glib::Propagation::Stop;
-            }
-        }
-        gtk4::glib::Propagation::Proceed
-    });
+            gtk4::glib::Propagation::Proceed
+        });
 
     // Polkit switch handler
-    ctx.sw_prompt.connect_state_set(move |_switch, state| {
-        if state {
-            info!("User enabled polkit fingerprint authentication switch");
-        } else {
-            info!("User disabled polkit fingerprint authentication switch");
-        }
+    ctx.fingerprint_ctx
+        .ui
+        .switches
+        .prompt
+        .connect_state_set(move |_switch, state| {
+            if state {
+                info!("User enabled polkit fingerprint authentication switch");
+            } else {
+                info!("User disabled polkit fingerprint authentication switch");
+            }
 
-        let res = if state {
-            PamHelper::apply_configuration(POLKIT_PATH)
-        } else {
-            PamHelper::remove_configuration(POLKIT_PATH)
-        };
+            let res = if state {
+                PamHelper::apply_configuration(POLKIT_PATH)
+            } else {
+                PamHelper::remove_configuration(POLKIT_PATH)
+            };
 
-        match res {
-            Ok(()) => {
-                if state {
-                    info!("Successfully enabled fingerprint authentication for polkit");
-                } else {
-                    info!("Successfully disabled fingerprint authentication for polkit");
+            match res {
+                Ok(()) => {
+                    if state {
+                        info!("Successfully enabled fingerprint authentication for polkit");
+                    } else {
+                        info!("Successfully disabled fingerprint authentication for polkit");
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to {} fingerprint authentication for polkit: {}",
+                        if state { "enable" } else { "disable" },
+                        e
+                    );
+                    return gtk4::glib::Propagation::Stop;
                 }
             }
-            Err(e) => {
-                error!(
-                    "Failed to {} fingerprint authentication for polkit: {}",
-                    if state { "enable" } else { "disable" },
-                    e
-                );
-                return gtk4::glib::Propagation::Stop;
-            }
-        }
-        gtk4::glib::Propagation::Proceed
-    });
+            gtk4::glib::Propagation::Proceed
+        });
 }
 
 /// Set up navigation buttons.
@@ -332,7 +343,7 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
         .expect("Failed to get button_back");
 
     {
-        let stack = ctx.stack.clone();
+        let stack = ctx.fingerprint_ctx.ui.stack.clone();
         manage_btn.connect_clicked(move |_| {
             info!("User clicked 'Manage' button - navigating to management page");
             stack.set_visible_child_name("manage");
@@ -340,7 +351,7 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
     }
 
     {
-        let stack = ctx.stack.clone();
+        let stack = ctx.fingerprint_ctx.ui.stack.clone();
         back_btn.connect_clicked(move |_| {
             info!("User clicked 'Back' button - returning to main page");
             stack.set_visible_child_name("main");
@@ -348,7 +359,7 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
     }
 
     {
-        let stack = ctx.stack.clone();
+        let stack = ctx.fingerprint_ctx.ui.stack.clone();
         button_back.connect_clicked(move |_| {
             info!("User clicked 'Back' button - returning to management page");
             stack.set_visible_child_name("manage");
@@ -412,59 +423,25 @@ fn show_sddm_hint(parent: &ApplicationWindow) {
     window.show();
 }
 
-/// Set up fingerprint management buttons.
-fn setup_fingerprint_management(ctx: &AppContext, _builder: &Builder) {
-    setup_enroll_button(&ctx.button_add, ctx);
-    setup_delete_button(&ctx.button_delete, ctx);
-}
-
 /// Set up enrollment button.
-fn setup_enroll_button(button_add: &Button, ctx: &AppContext) {
+fn setup_enroll_button(button_add: &Button, ctx: &FingerprintContext) {
     let ctx_clone = ctx.clone();
     button_add.connect_clicked(move |_| {
-        if let Some(key) = ctx_clone.selected_finger.borrow().clone() {
+        if let Some(key) = ctx_clone.get_selected_finger() {
             info!("User clicked 'Add' button for finger: '{}'", key);
             info!("Initiating fingerprint enrollment process");
 
-            let enrollment_ctx = enroll::EnrollmentContext {
-                rt: ctx_clone.rt.clone(),
-                flow: ctx_clone.fingers_flow.clone(),
-                stack: ctx_clone.stack.clone(),
-                sw_login: ctx_clone.sw_login.clone(),
-                sw_term: ctx_clone.sw_term.clone(),
-                sw_prompt: ctx_clone.sw_prompt.clone(),
-                selected_finger: ctx_clone.selected_finger.clone(),
-                finger_label: ctx_clone.finger_label.clone(),
-                action_label: ctx_clone.action_label.clone(),
-                button_add: ctx_clone.button_add.clone(),
-                button_delete: ctx_clone.button_delete.clone(),
-            };
-
-            enroll::start_enrollment(key, enrollment_ctx);
+            enroll::start_enrollment(key, ctx_clone.clone());
         }
     });
 }
 
 /// Set up delete button.
-fn setup_delete_button(button_delete: &Button, ctx: &AppContext) {
+fn setup_delete_button(button_delete: &Button, ctx: &FingerprintContext) {
     let ctx_clone = ctx.clone();
     button_delete.connect_clicked(move |_| {
-        if let Some(key) = ctx_clone.selected_finger.borrow().clone() {
-            let removal_ctx = remove::RemovalContext {
-                rt: ctx_clone.rt.clone(),
-                flow: ctx_clone.fingers_flow.clone(),
-                stack: ctx_clone.stack.clone(),
-                sw_login: ctx_clone.sw_login.clone(),
-                sw_term: ctx_clone.sw_term.clone(),
-                sw_prompt: ctx_clone.sw_prompt.clone(),
-                selected_finger: ctx_clone.selected_finger.clone(),
-                finger_label: ctx_clone.finger_label.clone(),
-                action_label: ctx_clone.action_label.clone(),
-                button_add: ctx_clone.button_add.clone(),
-                button_delete: ctx_clone.button_delete.clone(),
-            };
-
-            remove::start_removal(key, removal_ctx);
+        if let Some(key) = ctx_clone.get_selected_finger() {
+            remove::start_removal(key, ctx_clone.clone());
         }
     });
 }
@@ -483,16 +460,16 @@ fn perform_initial_fingerprint_scan(ctx: &AppContext) {
             } else {
                 info!("Enrollment check complete: no fingerprints found, switches remain disabled");
             }
-            ctx_clone.sw_login.set_sensitive(has_any);
-            ctx_clone.sw_term.set_sensitive(has_any);
-            ctx_clone.sw_prompt.set_sensitive(has_any);
+            ctx_clone
+                .fingerprint_ctx
+                .set_pam_switches_sensitive(has_any);
             glib::ControlFlow::Break
         }
         Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
         Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
     });
 
-    let rt = ctx.rt.clone();
+    let rt = ctx.fingerprint_ctx.rt.clone();
     rt.spawn(async move {
         info!("Starting system fingerprint device detection and enrollment scan");
         let enrolled = crate::fingerprints::scan_enrolled_fingerprints().await;
@@ -513,65 +490,19 @@ fn perform_initial_fingerprint_scan(ctx: &AppContext) {
         let _ = tx.send(has_any);
     });
 
-    refresh_fingerprint_display(
-        ctx.rt.clone(),
-        ctx.fingers_flow.clone(),
-        ctx.stack.clone(),
-        ctx.selected_finger.clone(),
-        ctx.finger_label.clone(),
-        ctx.action_label.clone(),
-        ctx.button_add.clone(),
-        ctx.button_delete.clone(),
-        ctx.sw_login.clone(),
-        ctx.sw_term.clone(),
-        ctx.sw_prompt.clone(),
-    );
+    refresh_fingerprint_display(ctx.fingerprint_ctx.clone());
 }
 
-/// Refresh fingerprint display UI.
-#[allow(clippy::too_many_arguments)]
-pub fn refresh_fingerprint_display(
-    rt: Arc<Runtime>,
-    fingers_flow: FlowBox,
-    stack: Stack,
-    selected_finger: Rc<RefCell<Option<String>>>,
-    finger_label: Label,
-    action_label: Label,
-    button_add: Button,
-    button_delete: Button,
-    sw_login: Switch,
-    sw_term: Switch,
-    sw_prompt: Switch,
-) {
+/// Refresh fingerprint display with current enrollment status.
+pub fn refresh_fingerprint_display(ctx: FingerprintContext) {
     let (tx, rx) = mpsc::channel::<HashSet<String>>();
 
     {
-        let fingers_flow_clone = fingers_flow.clone();
-        let stack_clone = stack.clone();
-        let selected_clone = selected_finger.clone();
-        let finger_label_clone = finger_label.clone();
-        let action_label_clone = action_label.clone();
-        let button_add_clone = button_add.clone();
-        let button_delete_clone = button_delete.clone();
-        let sw_login_clone = sw_login.clone();
-        let sw_term_clone = sw_term.clone();
-        let sw_prompt_clone = sw_prompt.clone();
+        let ctx_clone = ctx.clone();
 
         glib::idle_add_local(move || match rx.try_recv() {
             Ok(enrolled) => {
-                update_fingerprint_ui(
-                    enrolled,
-                    &fingers_flow_clone,
-                    &stack_clone,
-                    &selected_clone,
-                    &finger_label_clone,
-                    &action_label_clone,
-                    &button_add_clone,
-                    &button_delete_clone,
-                    &sw_login_clone,
-                    &sw_term_clone,
-                    &sw_prompt_clone,
-                );
+                update_fingerprint_ui(enrolled, &ctx_clone);
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
@@ -579,27 +510,14 @@ pub fn refresh_fingerprint_display(
         });
     }
 
-    rt.spawn(async move {
+    ctx.rt.spawn(async move {
         let enrolled = crate::fingerprints::scan_enrolled_fingerprints().await;
         let _ = tx.send(enrolled);
     });
 }
 
-/// Update fingerprint UI with enrolled fingerprints.
-#[allow(clippy::too_many_arguments)]
-fn update_fingerprint_ui(
-    enrolled: HashSet<String>,
-    fingers_flow: &FlowBox,
-    stack: &Stack,
-    selected_finger: &Rc<RefCell<Option<String>>>,
-    finger_label: &Label,
-    action_label: &Label,
-    button_add: &Button,
-    button_delete: &Button,
-    sw_login: &Switch,
-    sw_term: &Switch,
-    sw_prompt: &Switch,
-) {
+/// Update fingerprint UI elements with enrollment data.
+fn update_fingerprint_ui(enrolled: HashSet<String>, ctx: &FingerprintContext) {
     let has_any = !enrolled.is_empty();
     info!(
         "Updating finger selection UI with {} enrolled fingerprints",
@@ -616,85 +534,38 @@ fn update_fingerprint_ui(
         info!("User must enroll fingerprints before enabling authentication");
     }
 
-    sw_login.set_sensitive(has_any);
-    sw_term.set_sensitive(has_any);
-    sw_prompt.set_sensitive(has_any);
+    ctx.set_pam_switches_sensitive(has_any);
 
     // Update button states based on selected finger and enrollment status
-    update_button_states(&enrolled, selected_finger, button_add, button_delete);
+    update_button_states(&enrolled, ctx);
 
-    while let Some(child) = fingers_flow.first_child() {
-        fingers_flow.remove(&child);
+    while let Some(child) = ctx.ui.flow.first_child() {
+        ctx.ui.flow.remove(&child);
     }
 
-    create_finger_sections(
-        &enrolled,
-        fingers_flow,
-        selected_finger,
-        finger_label,
-        action_label,
-        button_add,
-        button_delete,
-        stack,
-    );
+    create_finger_sections(&enrolled, ctx);
 
     info!("Finger selection UI updated successfully with hand separation");
 }
 
 /// Create finger button sections for left and right hands.
-#[allow(clippy::too_many_arguments)]
-fn create_finger_sections(
-    enrolled: &HashSet<String>,
-    fingers_flow: &FlowBox,
-    selected_finger: &Rc<RefCell<Option<String>>>,
-    finger_label: &Label,
-    action_label: &Label,
-    button_add: &Button,
-    button_delete: &Button,
-    stack: &Stack,
-) {
+fn create_finger_sections(enrolled: &HashSet<String>, ctx: &FingerprintContext) {
     let left_fingers = &fprintd::FINGERS[0..5];
     let right_fingers = &fprintd::FINGERS[5..10];
 
-    let right_hand_container = create_hand_section(
-        "Right Hand",
-        right_fingers,
-        enrolled,
-        selected_finger,
-        finger_label,
-        action_label,
-        button_add,
-        button_delete,
-        stack,
-    );
-    fingers_flow.append(&right_hand_container);
+    let right_hand_container = create_hand_section("Right Hand", right_fingers, enrolled, ctx);
+    ctx.ui.flow.append(&right_hand_container);
 
-    let left_hand_container = create_hand_section(
-        "Left Hand",
-        left_fingers,
-        enrolled,
-        selected_finger,
-        finger_label,
-        action_label,
-        button_add,
-        button_delete,
-        stack,
-    );
-    fingers_flow.append(&left_hand_container);
+    let left_hand_container = create_hand_section("Left Hand", left_fingers, enrolled, ctx);
+    ctx.ui.flow.append(&left_hand_container);
 }
 
 /// Create hand section (left or right) with finger buttons.
-#[allow(clippy::too_many_arguments)]
 fn create_hand_section(
     title: &str,
     fingers: &[&str],
     enrolled: &HashSet<String>,
-    selected_finger: &Rc<RefCell<Option<String>>>,
-    finger_label: &Label,
-    action_label: &Label,
-    button_add: &Button,
-    button_delete: &Button,
-    stack: &Stack,
+    ctx: &FingerprintContext,
 ) -> GtkBox {
     let hand_container = GtkBox::new(Orientation::Vertical, 10);
     hand_container.set_halign(Align::Center);
@@ -708,16 +579,7 @@ fn create_hand_section(
     finger_grid.set_homogeneous(true);
 
     for finger in fingers {
-        let finger_box = create_finger_button(
-            finger,
-            enrolled,
-            selected_finger.clone(),
-            finger_label.clone(),
-            action_label.clone(),
-            button_add.clone(),
-            button_delete.clone(),
-            stack.clone(),
-        );
+        let finger_box = create_finger_button(finger, enrolled, ctx);
         finger_grid.append(&finger_box);
     }
 
@@ -726,16 +588,10 @@ fn create_hand_section(
 }
 
 /// Create finger button widget.
-#[allow(clippy::too_many_arguments)]
 fn create_finger_button(
     finger: &str,
     enrolled: &HashSet<String>,
-    selected_finger: Rc<RefCell<Option<String>>>,
-    finger_label: Label,
-    action_label: Label,
-    button_add: Button,
-    button_delete: Button,
-    stack: Stack,
+    ctx: &FingerprintContext,
 ) -> GtkBox {
     let container = GtkBox::new(Orientation::Vertical, 5);
     container.set_halign(Align::Center);
@@ -770,24 +626,28 @@ fn create_finger_button(
     }
 
     let finger_key = finger.to_string();
-    let selected_c = selected_finger.clone();
-    let finger_label_c = finger_label.clone();
-    let action_label_c = action_label.clone();
-    let stack_c = stack.clone();
-    let button_add_c = button_add.clone();
-    let button_delete_c = button_delete.clone();
+    let ctx_clone = ctx.clone();
     let enrolled_c = enrolled.clone();
 
     button.connect_clicked(move |_| {
-        *selected_c.borrow_mut() = Some(finger_key.clone());
-        finger_label_c.set_label(&util::display_finger_name(&finger_key));
-        action_label_c.set_use_markup(false);
-        action_label_c.set_label("Select an action below.");
-        stack_c.set_visible_child_name("finger");
+        ctx_clone.set_selected_finger(Some(finger_key.clone()));
+        ctx_clone
+            .ui
+            .labels
+            .finger
+            .set_label(&util::display_finger_name(&finger_key));
+        ctx_clone.ui.labels.action.set_use_markup(false);
+        ctx_clone
+            .ui
+            .labels
+            .action
+            .set_label("Select an action below.");
+        ctx_clone.ui.stack.set_visible_child_name("finger");
         info!("User selected finger: '{}'", finger_key);
 
         // Update button states when finger is selected
-        update_button_states(&enrolled_c, &selected_c, &button_add_c, &button_delete_c);
+        let is_enrolled = enrolled_c.contains(&finger_key);
+        ctx_clone.update_button_states(is_enrolled);
     });
 
     let display_name = util::display_finger_name(finger);
@@ -806,20 +666,11 @@ fn create_finger_button(
 }
 
 /// Update button states based on selected finger and enrollment status
-fn update_button_states(
-    enrolled: &HashSet<String>,
-    selected_finger: &Rc<RefCell<Option<String>>>,
-    button_add: &Button,
-    button_delete: &Button,
-) {
-    if let Some(ref finger_key) = *selected_finger.borrow() {
+fn update_button_states(enrolled: &HashSet<String>, ctx: &FingerprintContext) {
+    if let Some(ref finger_key) = ctx.get_selected_finger() {
         let is_enrolled = enrolled.contains(finger_key);
 
-        // Enable Add button if fingerprint is NOT enrolled
-        button_add.set_sensitive(!is_enrolled);
-
-        // Enable Remove button if fingerprint IS enrolled
-        button_delete.set_sensitive(is_enrolled);
+        ctx.update_button_states(is_enrolled);
 
         info!(
             "Updated button states for finger '{}': Add={}, Remove={}",
@@ -827,8 +678,8 @@ fn update_button_states(
         );
     } else {
         // No finger selected, disable both buttons
-        button_add.set_sensitive(false);
-        button_delete.set_sensitive(false);
+        ctx.ui.buttons.add.set_sensitive(false);
+        ctx.ui.buttons.delete.set_sensitive(false);
         info!("No finger selected, both buttons disabled");
     }
 }

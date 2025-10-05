@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::Application;
 use log::info;
 
+mod context;
 mod fingerprints;
 mod fprintd;
 mod pam_helper;

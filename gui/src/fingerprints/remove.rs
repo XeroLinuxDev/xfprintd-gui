@@ -1,33 +1,12 @@
 //! Fingerprint removal functionality.
 
+use crate::context::FingerprintContext;
 use crate::fprintd;
 use gtk4::glib;
 
-use gtk4::{
-    prelude::*, ApplicationWindow, Button, CheckButton, FlowBox, Label, Stack, Switch, Window,
-};
+use gtk4::{prelude::*, ApplicationWindow, Button, CheckButton, Window};
 use log::{error, info, warn};
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::mpsc::{self, TryRecvError};
-use std::sync::Arc;
-use tokio::runtime::Runtime;
-
-/// UI context for removal operations.
-#[derive(Clone)]
-pub struct RemovalContext {
-    pub rt: Arc<Runtime>,
-    pub flow: FlowBox,
-    pub stack: Stack,
-    pub sw_login: Switch,
-    pub sw_term: Switch,
-    pub sw_prompt: Switch,
-    pub selected_finger: Rc<RefCell<Option<String>>>,
-    pub finger_label: Label,
-    pub action_label: Label,
-    pub button_add: Button,
-    pub button_delete: Button,
-}
 
 /// Events sent during removal process.
 #[derive(Clone)]
@@ -37,12 +16,11 @@ pub enum RemovalEvent {
 }
 
 /// Start fingerprint removal process for specified finger.
-pub fn start_removal(finger_key: String, ctx: RemovalContext) {
+pub fn start_removal(finger_key: String, ctx: FingerprintContext) {
     info!("User clicked 'Delete' button for finger: '{}'", finger_key);
 
     // Check toggles state before async operation
-    let any_toggle_active =
-        ctx.sw_login.is_active() || ctx.sw_term.is_active() || ctx.sw_prompt.is_active();
+    let any_toggle_active = ctx.has_active_pam_switches();
 
     // Only proceed with check if toggles are active
     if !any_toggle_active {
@@ -80,7 +58,7 @@ pub fn start_removal(finger_key: String, ctx: RemovalContext) {
 }
 
 /// Show lockout warning dialog when attempting to remove last fingerprint with toggles enabled.
-fn show_lockout_warning_dialog(finger_key: String, ctx: RemovalContext) {
+fn show_lockout_warning_dialog(finger_key: String, ctx: FingerprintContext) {
     info!("Showing lockout warning dialog - last fingerprint with active auth toggles");
 
     let builder =
@@ -90,7 +68,7 @@ fn show_lockout_warning_dialog(finger_key: String, ctx: RemovalContext) {
         .expect("Failed to get lockout_warning_window");
 
     // Get parent window for modal behavior
-    if let Some(toplevel) = ctx.stack.root() {
+    if let Some(toplevel) = ctx.ui.stack.root() {
         if let Some(app_window) = toplevel.downcast_ref::<ApplicationWindow>() {
             dialog.set_transient_for(Some(app_window));
         }
@@ -129,37 +107,35 @@ fn show_lockout_warning_dialog(finger_key: String, ctx: RemovalContext) {
 }
 
 /// Proceed with the actual removal process.
-fn proceed_with_removal(finger_key: String, ctx: RemovalContext) {
+fn proceed_with_removal(finger_key: String, ctx: FingerprintContext) {
     info!("Starting fingerprint deletion process");
 
-    set_deletion_status(&ctx.action_label);
+    ctx.ui
+        .labels
+        .action
+        .set_label("Deleting enrolled fingerprint...");
     let (tx, rx) = mpsc::channel::<RemovalEvent>();
 
     setup_removal_ui_listener(rx, ctx.clone());
     spawn_removal_task(finger_key, tx, ctx);
 }
 
-/// Set initial deletion status message.
-fn set_deletion_status(action_label: &Label) {
-    action_label.set_label("Deleting enrolled fingerprint...");
-}
-
 /// Set up UI listener for removal status updates.
-fn setup_removal_ui_listener(rx: mpsc::Receiver<RemovalEvent>, ctx: RemovalContext) {
-    let action_label = ctx.action_label.clone();
+fn setup_removal_ui_listener(rx: mpsc::Receiver<RemovalEvent>, ctx: FingerprintContext) {
+    let action_label = ctx.ui.labels.action.clone();
     let _rt = ctx.rt.clone();
 
     glib::idle_add_local(move || match rx.try_recv() {
         Ok(RemovalEvent::Success) => {
             action_label.set_use_markup(true);
             action_label.set_markup("<span color='orange'>Fingerprint deleted.</span>");
-            refresh_fingerprint_ui_after_removal(ctx.clone());
+            crate::ui::refresh_fingerprint_display(ctx.clone());
             glib::ControlFlow::Break
         }
         Ok(RemovalEvent::Error(msg)) => {
             action_label.set_use_markup(true);
             action_label.set_markup(&msg);
-            refresh_fingerprint_ui_after_removal(ctx.clone());
+            crate::ui::refresh_fingerprint_display(ctx.clone());
             glib::ControlFlow::Break
         }
         Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
@@ -168,7 +144,7 @@ fn setup_removal_ui_listener(rx: mpsc::Receiver<RemovalEvent>, ctx: RemovalConte
 }
 
 /// Spawn async removal task.
-fn spawn_removal_task(finger_key: String, tx: mpsc::Sender<RemovalEvent>, ctx: RemovalContext) {
+fn spawn_removal_task(finger_key: String, tx: mpsc::Sender<RemovalEvent>, ctx: FingerprintContext) {
     ctx.rt.spawn(async move {
         info!(
             "Connecting to fprintd system bus for deletion of '{}'",
@@ -178,10 +154,10 @@ fn spawn_removal_task(finger_key: String, tx: mpsc::Sender<RemovalEvent>, ctx: R
         let client = match connect_to_fprintd_for_removal().await {
             Ok(client) => client,
             Err(e) => {
-                send_removal_error(
-                    &tx,
-                    &format!("<span color='red'><b>Bus connect failed</b>: {}</span>", e),
-                );
+                let _ = tx.send(RemovalEvent::Error(format!(
+                    "<span color='red'><b>Bus connect failed</b>: {}</span>",
+                    e
+                )));
                 return;
             }
         };
@@ -189,7 +165,7 @@ fn spawn_removal_task(finger_key: String, tx: mpsc::Sender<RemovalEvent>, ctx: R
         let device = match get_fingerprint_device_for_removal(&client).await {
             Ok(device) => device,
             Err(e) => {
-                send_removal_error(&tx, &e);
+                let _ = tx.send(RemovalEvent::Error(e));
                 return;
             }
         };
@@ -271,10 +247,10 @@ async fn perform_fingerprint_deletion(
     info!("Executing deletion of enrolled finger: '{}'", finger_key);
     if let Err(e) = device.delete_enrolled_finger(finger_key).await {
         error!("Failed to delete enrolled finger '{}': {}", finger_key, e);
-        send_removal_error(
-            tx,
-            &format!("<span color='red'><b>Delete failed</b>: {}</span>", e),
-        );
+        let _ = tx.send(RemovalEvent::Error(format!(
+            "<span color='red'><b>Delete failed</b>: {}</span>",
+            e
+        )));
     } else {
         info!("Successfully deleted fingerprint '{}'", finger_key);
     }
@@ -288,26 +264,4 @@ async fn release_device_after_removal(device: &fprintd::Device) {
     } else {
         info!("Successfully released device after deletion");
     }
-}
-
-/// Send removal error message.
-fn send_removal_error(tx: &mpsc::Sender<RemovalEvent>, message: &str) {
-    let _ = tx.send(RemovalEvent::Error(message.to_string()));
-}
-
-/// Refresh fingerprint UI after removal completion.
-fn refresh_fingerprint_ui_after_removal(ctx: RemovalContext) {
-    crate::ui::refresh_fingerprint_display(
-        ctx.rt,
-        ctx.flow,
-        ctx.stack,
-        ctx.selected_finger,
-        ctx.finger_label,
-        ctx.action_label,
-        ctx.button_add,
-        ctx.button_delete,
-        ctx.sw_login,
-        ctx.sw_term,
-        ctx.sw_prompt,
-    );
 }
