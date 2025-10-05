@@ -2,7 +2,8 @@
 
 use crate::context::FingerprintContext;
 use crate::fingerprints::{enroll, remove};
-use crate::pam_helper::{get_login_path, is_sddm_enabled, PamHelper, POLKIT_PATH, SUDO_PATH};
+use crate::pam_helper::{is_sddm_enabled, PamHelper};
+use crate::pam_switch;
 use crate::util;
 use crate::{fprintd, system};
 use gtk4::glib;
@@ -11,7 +12,7 @@ use gtk4::{
     gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
     FlowBox, Image, Justification, Label, Orientation, Overlay, Stack, Switch, Window,
 };
-use log::{error, info, warn};
+use log::{info, warn};
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -215,121 +216,22 @@ fn setup_pam_switches(ctx: &AppContext) {
     setup_pam_switch_handlers(ctx);
 }
 
-/// Set up PAM switch event handlers.
+/// Set up PAM switch event handlers using generic implementation.
 fn setup_pam_switch_handlers(ctx: &AppContext) {
-    ctx.fingerprint_ctx
-        .ui
-        .switches
-        .login
-        .connect_state_set(move |_switch, state| {
-            if state {
-                info!("User enabled login fingerprint authentication switch");
-            } else {
-                info!("User disabled login fingerprint authentication switch");
-            }
+    pam_switch::setup_pam_switch(
+        &ctx.fingerprint_ctx.ui.switches.login,
+        pam_switch::services::login(),
+    );
 
-            let login_path = get_login_path();
-            let res = if state {
-                PamHelper::apply_configuration(login_path)
-            } else {
-                PamHelper::remove_configuration(login_path)
-            };
+    pam_switch::setup_pam_switch(
+        &ctx.fingerprint_ctx.ui.switches.term,
+        pam_switch::services::SUDO,
+    );
 
-            match res {
-                Ok(()) => {
-                    if state {
-                        info!("Successfully enabled fingerprint authentication for login");
-                    } else {
-                        info!("Successfully disabled fingerprint authentication for login");
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to {} fingerprint authentication for login: {}",
-                        if state { "enable" } else { "disable" },
-                        e
-                    );
-                    return gtk4::glib::Propagation::Stop;
-                }
-            }
-            gtk4::glib::Propagation::Proceed
-        });
-
-    // Sudo switch handler
-    ctx.fingerprint_ctx
-        .ui
-        .switches
-        .term
-        .connect_state_set(move |_switch, state| {
-            if state {
-                info!("User enabled sudo fingerprint authentication switch");
-            } else {
-                info!("User disabled sudo fingerprint authentication switch");
-            }
-
-            let res = if state {
-                PamHelper::apply_configuration(SUDO_PATH)
-            } else {
-                PamHelper::remove_configuration(SUDO_PATH)
-            };
-
-            match res {
-                Ok(()) => {
-                    if state {
-                        info!("Successfully enabled fingerprint authentication for sudo");
-                    } else {
-                        info!("Successfully disabled fingerprint authentication for sudo");
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to {} fingerprint authentication for sudo: {}",
-                        if state { "enable" } else { "disable" },
-                        e
-                    );
-                    return gtk4::glib::Propagation::Stop;
-                }
-            }
-            gtk4::glib::Propagation::Proceed
-        });
-
-    // Polkit switch handler
-    ctx.fingerprint_ctx
-        .ui
-        .switches
-        .prompt
-        .connect_state_set(move |_switch, state| {
-            if state {
-                info!("User enabled polkit fingerprint authentication switch");
-            } else {
-                info!("User disabled polkit fingerprint authentication switch");
-            }
-
-            let res = if state {
-                PamHelper::apply_configuration(POLKIT_PATH)
-            } else {
-                PamHelper::remove_configuration(POLKIT_PATH)
-            };
-
-            match res {
-                Ok(()) => {
-                    if state {
-                        info!("Successfully enabled fingerprint authentication for polkit");
-                    } else {
-                        info!("Successfully disabled fingerprint authentication for polkit");
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to {} fingerprint authentication for polkit: {}",
-                        if state { "enable" } else { "disable" },
-                        e
-                    );
-                    return gtk4::glib::Propagation::Stop;
-                }
-            }
-            gtk4::glib::Propagation::Proceed
-        });
+    pam_switch::setup_pam_switch(
+        &ctx.fingerprint_ctx.ui.switches.prompt,
+        pam_switch::services::POLKIT,
+    );
 }
 
 /// Set up navigation buttons.

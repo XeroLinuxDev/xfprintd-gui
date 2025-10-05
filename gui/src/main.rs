@@ -6,6 +6,7 @@ mod context;
 mod fingerprints;
 mod fprintd;
 mod pam_helper;
+mod pam_switch;
 mod system;
 mod ui;
 mod util;
