@@ -11,6 +11,13 @@ use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
+const COLOR_PROGRESS: &str = "#a277ff"; // Purple (progress/successful scan)
+const COLOR_WARNING: &str = "#ff6ac1"; // Pink (retry / adjustment)
+const COLOR_PROCESS: &str = "#5ea2ff"; // Blue (processing / neutral status)
+const COLOR_COMPLETE: &str = "#a277ff"; // Reuse purple for completion
+const COLOR_FAIL: &str = "#ff4d6d"; // Accent failure
+const COLOR_NEUTRAL: &str = "#8a8f98"; // Neutral / fallback
+
 /// UI context for enrollment operations.
 #[derive(Clone)]
 pub struct EnrollmentContext {
@@ -68,9 +75,11 @@ fn setup_ui_listener(rx: mpsc::Receiver<EnrollmentEvent>, ctx: EnrollmentContext
 
 /// Send initial enrollment message to UI.
 fn send_initial_message(tx: &mpsc::Sender<EnrollmentEvent>) {
-    let _ = tx.send(EnrollmentEvent::SetText(
-        "<b>🔍 Place your finger firmly on the scanner…</b>".to_string(),
-    ));
+    // We don't yet know required stages (varies by device), so we show a generic Step 1 message.
+    let _ = tx.send(EnrollmentEvent::SetText(format!(
+        "<b><span foreground='{}'>🔍 Scan 1</span> - Place your finger firmly on the scanner…</b>",
+        COLOR_PROGRESS
+    )));
 }
 
 /// Spawn async enrollment task.
@@ -140,7 +149,10 @@ async fn get_fingerprint_device(client: &fprintd::Client) -> Result<fprintd::Dev
         Ok(None) => {
             warn!("No fingerprint devices available for enrollment");
             warn!("Please connect a fingerprint reader and try again");
-            Err("<span color='orange'>No fingerprint devices available.</span>".to_string())
+            Err(format!(
+                "<span foreground='{}'>No fingerprint devices available.</span>",
+                COLOR_WARNING
+            ))
         }
         Err(e) => {
             error!("Failed to enumerate devices during enrollment: {}", e);
@@ -172,17 +184,96 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
 
     tokio::spawn(async move {
         info!("Setting up enrollment status listener for real-time feedback");
+        // Track progressive successful stages (we only show how many good scans were captured so far).
+        let mut stage_count: usize = 0usize;
+
         let _ = device_for_listener
             .listen_enroll_status(move |evt| {
                 info!(
                     "Enrollment status update: result='{}', done={}",
                     evt.result, evt.done
                 );
-                let text = process_enrollment_status(&evt.result);
-                let _ = tx_status.send(EnrollmentEvent::SetText(text));
+
+                let mut _message: Option<String> = None;
+
+                match evt.result.as_str() {
+                    "enroll-stage-passed" => {
+                        stage_count += 1;
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
+                            COLOR_PROGRESS,
+                            stage_count
+                        ));
+                    }
+                    "enroll-remove-and-retry" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>⚠️  Retry scan {}.</b> Lift your finger completely, reposition (centered & flat), then place again…",
+                            COLOR_WARNING,
+                            stage_count + 1
+                        ));
+                    }
+                    "enroll-swipe-too-short" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>👆 Swipe too short.</b> Try a longer, smoother swipe (still on scan {}).",
+                            COLOR_WARNING,
+                            stage_count + 1
+                        ));
+                    }
+                    "enroll-finger-not-centered" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>🎯 Not centered.</b> Re‑place finger centered & flat (scan {}).",
+                            COLOR_WARNING,
+                            stage_count + 1
+                        ));
+                    }
+                    "enroll-duplicate" => {
+                        _message = Some(
+                            format!(
+                                "<span foreground='{}'><b>🔄 Already enrolled!</b> Choose a different finger.</span>",
+                                COLOR_WARNING
+                            )
+                        );
+                    }
+                    "enroll-data-full" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>📊 Processing captured data…</b> ({} scans so far)</span>",
+                            COLOR_PROCESS,
+                            stage_count
+                        ));
+                    }
+                    "enroll-failed" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>❌ Enrollment failed.</b> Please try again.</span>",
+                            COLOR_FAIL
+                        ));
+                    }
+                    "enroll-completed" => {
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>🎉 Enrollment complete!</b> Captured {} quality scans.</span>",
+                            COLOR_COMPLETE,
+                            stage_count
+                        ));
+                    }
+                    other => {
+                        // Fallback / unknown statuses
+                        _message = Some(format!(
+                            "<span foreground='{}'><b>📊 Status:</b> {} (scan {})</span>",
+                            COLOR_NEUTRAL,
+                            other,
+                            stage_count.max(1)
+                        ));
+                    }
+                }
+
+                if let Some(text) = _message {
+                    let _ = tx_status.send(EnrollmentEvent::SetText(text));
+                }
 
                 if evt.result == "enroll-completed" {
-                    info!("Fingerprint enrollment completed successfully!");
+                    info!(
+                        "Fingerprint enrollment completed successfully after {} stages",
+                        stage_count
+                    );
                     let _ = tx_status.send(EnrollmentEvent::EnrollCompleted);
                 }
 
@@ -193,47 +284,6 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
             })
             .await;
     });
-}
-
-/// Process enrollment status and return appropriate UI message.
-fn process_enrollment_status(result: &str) -> String {
-    match result {
-        "enroll-completed" => {
-            "<span color='green'><b>🎉 Well done!</b> Your fingerprint was saved successfully.</span>".to_string()
-        }
-        "enroll-stage-passed" => {
-            info!("Enrollment stage passed, continuing...");
-            "<span color='blue'><b>✅ Good scan!</b> Lift your finger, then place it again...</span>".to_string()
-        }
-        "enroll-remove-and-retry" => {
-            warn!("Enrollment stage failed, user needs to retry");
-            "<span color='orange'><b>⚠️  Lift your finger</b> and place it down again...</span>".to_string()
-        }
-        "enroll-data-full" => {
-            info!("Enrollment data buffer full, processing...");
-            "<span color='blue'><b>📊 Processing...</b> Keep finger steady</span>".to_string()
-        }
-        "enroll-swipe-too-short" => {
-            warn!("Finger swipe too short");
-            "<span color='orange'><b>👆 Swipe too short</b> - try a longer swipe</span>".to_string()
-        }
-        "enroll-finger-not-centered" => {
-            warn!("Finger not centered properly");
-            "<span color='orange'><b>🎯 Center your finger</b> and try again</span>".to_string()
-        }
-        "enroll-duplicate" => {
-            warn!("Duplicate fingerprint detected");
-            "<span color='orange'><b>🔄 Already enrolled!</b> This fingerprint is already saved, use a different finger.</span>".to_string()
-        }
-        "enroll-failed" => {
-            error!("Fingerprint enrollment failed");
-            "<span color='red'><b>❌ Enrollment failed!</b> Sorry, your fingerprint could not be saved.</span>".to_string()
-        }
-        other => {
-            info!("Enrollment status: '{}' (in progress)", other);
-            format!("<span color='gray'><b>📊 Status:</b> {}</span>", other)
-        }
-    }
 }
 
 /// Start actual enrollment process.
