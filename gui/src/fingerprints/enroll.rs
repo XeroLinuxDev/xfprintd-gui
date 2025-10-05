@@ -7,6 +7,7 @@ use crate::core::fprintd;
 use gtk4::glib;
 
 use log::{info, warn};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -128,7 +129,8 @@ async fn setup_enrollment_listener(
     tokio::spawn(async move {
         info!("Setting up enrollment status listener for real-time feedback");
         // Track progressive successful stages (we only show how many good scans were captured so far).
-        let mut stage_count: usize = 0usize;
+        let stage_count = Arc::new(AtomicUsize::new(0));
+        let stage_count_clone = stage_count.clone();
 
         let _ = device_for_listener
             .listen_enroll_status(move |evt| {
@@ -141,32 +143,35 @@ async fn setup_enrollment_listener(
 
                 match evt.result.as_str() {
                     "enroll-stage-passed" => {
-                        stage_count += 1;
+                        let count = stage_count_clone.fetch_add(1, Ordering::SeqCst) + 1;
                         _message = Some(format!(
                             "<span foreground='{}'><b>✅ Scan {} captured.</b> Lift your finger, then place it again…",
                             config::colors().progress,
-                            stage_count
+                            count
                         ));
                     }
                     "enroll-remove-and-retry" => {
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>⚠️  Retry scan {}.</b> Lift your finger completely, reposition (centered & flat), then place again…",
                             config::colors().warning,
-                            stage_count + 1
+                            count + 1
                         ));
                     }
                     "enroll-swipe-too-short" => {
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>👆 Swipe too short.</b> Try a longer, smoother swipe (still on scan {}).",
                             config::colors().warning,
-                            stage_count + 1
+                            count + 1
                         ));
                     }
                     "enroll-finger-not-centered" => {
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>🎯 Not centered.</b> Re‑place finger centered & flat (scan {}).",
                             config::colors().warning,
-                            stage_count + 1
+                            count + 1
                         ));
                     }
                     "enroll-duplicate" => {
@@ -178,10 +183,11 @@ async fn setup_enrollment_listener(
                         );
                     }
                     "enroll-data-full" => {
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>📊 Processing captured data…</b> ({} scans so far)</span>",
                             config::colors().process,
-                            stage_count
+                            count
                         ));
                     }
                     "enroll-failed" => {
@@ -191,19 +197,21 @@ async fn setup_enrollment_listener(
                         ));
                     }
                     "enroll-completed" => {
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>🎉 Enrollment complete!</b> Captured {} quality scans.</span>",
                             config::colors().success,
-                            stage_count
+                            count
                         ));
                     }
                     other => {
                         // Fallback / unknown statuses
+                        let count = stage_count_clone.load(Ordering::SeqCst);
                         _message = Some(format!(
                             "<span foreground='{}'><b>📊 Status:</b> {} (scan {})</span>",
                             config::colors().neutral,
                             other,
-                            stage_count.max(1)
+                            count.max(1)
                         ));
                     }
                 }
@@ -213,9 +221,10 @@ async fn setup_enrollment_listener(
                 }
 
                 if evt.result == "enroll-completed" {
+                    let count = stage_count.load(Ordering::SeqCst);
                     info!(
                         "Fingerprint enrollment completed successfully after {} stages",
-                        stage_count
+                        count
                     );
                     let _ = tx_status.send(EnrollmentEvent::EnrollCompleted);
                 }
