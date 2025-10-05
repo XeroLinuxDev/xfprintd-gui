@@ -1,12 +1,24 @@
+# Maintainer: Kristián Kekeš <gamerix2006@gmail.com>
+# Maintainer: Steve C. <steve@techxero.com>
+
 pkgname=xfprintd-gui
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="GTK4 GUI to manage fingerprint enrollment and PAM integration; includes privileged Polkit helper"
+pkgdesc="GTK4 GUI to manage fingerprint enrollment and PAM integration"
 arch=('x86_64')
-url="https://xerolinux.xyz"
-license=('MIT')
-depends=('gtk4' 'polkit' 'glib2' 'fprintd')
-makedepends=('rust' 'cargo' 'pkgconf' 'glib2')
+url="https://github.com/BananikXenos/xfprintd-gui"
+license=('GPL-3.0-or-later')
+depends=(
+    'gtk4'
+    'polkit'
+    'glib2'
+    'fprintd'
+)
+makedepends=(
+    'rust'
+    'cargo'
+    'pkgconf'
+)
 provides=('xfprintd-gui')
 conflicts=('xfprintd-gui')
 options=('!emptydirs')

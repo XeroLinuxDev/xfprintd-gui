@@ -2,7 +2,12 @@
 name = "xfprintd-gui-helper"
 version.workspace = true
 edition = "2021"
+authors.workspace = true
+license.workspace = true
 description = "XFPrintD GUI - Privileged helper to apply/remove/check fingerprint PAM configurations"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 libc = "0.2"

@@ -9,4 +9,9 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+authors = ["Kristián Kekeš <gamerix2006@gmail.com>", "Steve C. <steve@techxero.com>"]
+license = "GPL-3.0-or-later"
 description = "XFPrintD GUI - GTK4 GUI to manage fingerprint enrollment and PAM integration"
+repository = "https://github.com/BananikXenos/xfprintd-gui"
+keywords = ["fingerprint", "authentication", "gtk4", "xerolinux"]
+categories = ["gui", "authentication"]
