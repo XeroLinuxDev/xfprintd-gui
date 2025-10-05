@@ -10,7 +10,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
     gio, pango, Align, Application, ApplicationWindow, Box as GtkBox, Builder, Button, CssProvider,
-    FlowBox, Image, Justification, Label, Orientation, Overlay, Stack, Switch, Window,
+    Image, Justification, Label, Orientation, Overlay, Window,
 };
 use log::{info, warn};
 
@@ -57,9 +57,7 @@ pub fn setup_application_ui(app: &Application) {
     let ctx = setup_ui_components(&window, rt, &builder);
     setup_pam_switches(&ctx);
     // Configure the SDDM-specific login info button (only visible when SDDM is enabled)
-    let login_info_btn: Button = builder
-        .object("login_info_btn")
-        .expect("Failed to get login_info_btn");
+    let login_info_btn: Button = extract_widget(&builder, "login_info_btn");
     if is_sddm_enabled() {
         info!("SDDM detected - showing login info hint button");
         login_info_btn.set_visible(true);
@@ -120,34 +118,29 @@ fn create_main_window(app: &Application, builder: &Builder) -> ApplicationWindow
     window
 }
 
+/// Helper to extract widgets from builder with consistent error handling.
+fn extract_widget<T: IsA<glib::Object>>(builder: &Builder, name: &str) -> T {
+    builder
+        .object(name)
+        .unwrap_or_else(|| panic!("Failed to get {}", name))
+}
+
 /// Set up UI components and return application context.
 fn setup_ui_components(
     _window: &ApplicationWindow,
     rt: Arc<Runtime>,
     builder: &Builder,
 ) -> AppContext {
-    let stack: Stack = builder.object("stack").expect("Failed to get stack");
-    let fingers_flow: FlowBox = builder
-        .object("fingers_flow")
-        .expect("Failed to get fingers_flow");
-    let selected_finger = Rc::new(RefCell::new(None));
-    let finger_label: Label = builder
-        .object("finger_label")
-        .expect("Failed to get finger_label");
-    let action_label: Label = builder
-        .object("action_label")
-        .expect("Failed to get action_label");
-    let button_add: Button = builder
-        .object("button_add")
-        .expect("Failed to get button_add");
-    let button_delete: Button = builder
-        .object("button_delete")
-        .expect("Failed to get button_delete");
-    let sw_login: Switch = builder.object("sw_login").expect("Failed to get sw_login");
-    let sw_term: Switch = builder.object("sw_term").expect("Failed to get sw_term");
-    let sw_prompt: Switch = builder
-        .object("sw_prompt")
-        .expect("Failed to get sw_prompt");
+    // Extract all widgets using helper
+    let stack = extract_widget(builder, "stack");
+    let fingers_flow = extract_widget(builder, "fingers_flow");
+    let finger_label = extract_widget(builder, "finger_label");
+    let action_label = extract_widget(builder, "action_label");
+    let button_add = extract_widget(builder, "button_add");
+    let button_delete = extract_widget(builder, "button_delete");
+    let sw_login = extract_widget(builder, "sw_login");
+    let sw_term = extract_widget(builder, "sw_term");
+    let sw_prompt = extract_widget(builder, "sw_prompt");
 
     info!("All UI components successfully initialized from Glade builder");
 
@@ -157,6 +150,7 @@ fn setup_ui_components(
     let buttons = crate::context::FingerprintButtons::new(button_add, button_delete);
     let ui = crate::context::UiComponents::new(fingers_flow, stack, switches, labels, buttons);
 
+    let selected_finger = Rc::new(RefCell::new(None));
     let fingerprint_ctx = FingerprintContext::new(rt, ui, selected_finger);
 
     AppContext { fingerprint_ctx }
@@ -236,13 +230,9 @@ fn setup_pam_switch_handlers(ctx: &AppContext) {
 
 /// Set up navigation buttons.
 fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
-    let manage_btn: Button = builder
-        .object("manage_btn")
-        .expect("Failed to get manage_btn");
-    let back_btn: Button = builder.object("back_btn").expect("Failed to get back_btn");
-    let button_back: Button = builder
-        .object("button_back")
-        .expect("Failed to get button_back");
+    let manage_btn: Button = extract_widget(builder, "manage_btn");
+    let back_btn: Button = extract_widget(builder, "back_btn");
+    let button_back: Button = extract_widget(builder, "button_back");
 
     {
         let stack = ctx.fingerprint_ctx.ui.stack.clone();
@@ -271,7 +261,7 @@ fn setup_navigation_buttons(ctx: &AppContext, builder: &Builder) {
 
 /// Set up info button to show about dialog.
 fn setup_info_button(window: &ApplicationWindow, builder: &Builder) {
-    let info_btn: Button = builder.object("info_btn").expect("Failed to get info_btn");
+    let info_btn: Button = extract_widget(builder, "info_btn");
 
     let window_clone = window.clone();
     info_btn.connect_clicked(move |_| {
@@ -302,18 +292,13 @@ fn show_info_dialog(main_window: &ApplicationWindow) {
     info_window.show();
 }
 
-/// Show SDDM fingerprint usage hint dialog (loaded from UI resource).
+/// Show SDDM-specific fingerprint hint dialog.
 fn show_sddm_hint(parent: &ApplicationWindow) {
     info!("Displaying SDDM fingerprint hint dialog");
     let builder = Builder::from_resource("/xyz/xerolinux/xfprintd_gui/ui/sddm_hint_dialog.ui");
 
-    let window: Window = builder
-        .object("sddm_hint_window")
-        .expect("Failed to get sddm_hint_window");
-
-    let close_button: Button = builder
-        .object("sddm_hint_close_button")
-        .expect("Failed to get sddm_hint_close_button");
+    let window: Window = extract_widget(&builder, "sddm_hint_window");
+    let close_button: Button = extract_widget(&builder, "sddm_hint_close_button");
 
     window.set_transient_for(Some(parent));
 
@@ -404,7 +389,8 @@ pub fn refresh_fingerprint_display(ctx: FingerprintContext) {
 
         glib::idle_add_local(move || match rx.try_recv() {
             Ok(enrolled) => {
-                update_fingerprint_ui(enrolled, &ctx_clone);
+                ctx_clone.set_enrolled(enrolled);
+                update_fingerprint_ui(&ctx_clone);
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
@@ -419,7 +405,8 @@ pub fn refresh_fingerprint_display(ctx: FingerprintContext) {
 }
 
 /// Update fingerprint UI elements with enrollment data.
-fn update_fingerprint_ui(enrolled: HashSet<String>, ctx: &FingerprintContext) {
+fn update_fingerprint_ui(ctx: &FingerprintContext) {
+    let enrolled = ctx.get_enrolled();
     let has_any = !enrolled.is_empty();
     info!(
         "Updating finger selection UI with {} enrolled fingerprints",
@@ -439,36 +426,31 @@ fn update_fingerprint_ui(enrolled: HashSet<String>, ctx: &FingerprintContext) {
     ctx.set_pam_switches_sensitive(has_any);
 
     // Update button states based on selected finger and enrollment status
-    update_button_states(&enrolled, ctx);
+    update_button_states(ctx);
 
     while let Some(child) = ctx.ui.flow.first_child() {
         ctx.ui.flow.remove(&child);
     }
 
-    create_finger_sections(&enrolled, ctx);
+    create_finger_sections(ctx);
 
     info!("Finger selection UI updated successfully with hand separation");
 }
 
 /// Create finger button sections for left and right hands.
-fn create_finger_sections(enrolled: &HashSet<String>, ctx: &FingerprintContext) {
+fn create_finger_sections(ctx: &FingerprintContext) {
     let left_fingers = &fprintd::FINGERS[0..5];
     let right_fingers = &fprintd::FINGERS[5..10];
 
-    let right_hand_container = create_hand_section("Right Hand", right_fingers, enrolled, ctx);
+    let right_hand_container = create_hand_section("Right Hand", right_fingers, ctx);
     ctx.ui.flow.append(&right_hand_container);
 
-    let left_hand_container = create_hand_section("Left Hand", left_fingers, enrolled, ctx);
+    let left_hand_container = create_hand_section("Left Hand", left_fingers, ctx);
     ctx.ui.flow.append(&left_hand_container);
 }
 
 /// Create hand section (left or right) with finger buttons.
-fn create_hand_section(
-    title: &str,
-    fingers: &[&str],
-    enrolled: &HashSet<String>,
-    ctx: &FingerprintContext,
-) -> GtkBox {
+fn create_hand_section(title: &str, fingers: &[&str], ctx: &FingerprintContext) -> GtkBox {
     let hand_container = GtkBox::new(Orientation::Vertical, 10);
     hand_container.set_halign(Align::Center);
 
@@ -481,7 +463,7 @@ fn create_hand_section(
     finger_grid.set_homogeneous(true);
 
     for finger in fingers {
-        let finger_box = create_finger_button(finger, enrolled, ctx);
+        let finger_box = create_finger_button(finger, ctx);
         finger_grid.append(&finger_box);
     }
 
@@ -490,11 +472,7 @@ fn create_hand_section(
 }
 
 /// Create finger button widget.
-fn create_finger_button(
-    finger: &str,
-    enrolled: &HashSet<String>,
-    ctx: &FingerprintContext,
-) -> GtkBox {
+fn create_finger_button(finger: &str, ctx: &FingerprintContext) -> GtkBox {
     let container = GtkBox::new(Orientation::Vertical, 5);
     container.set_halign(Align::Center);
     container.set_size_request(120, 120);
@@ -502,7 +480,7 @@ fn create_finger_button(
     let button = Button::new();
     button.set_size_request(90, 90);
 
-    let is_enrolled = enrolled.contains(&finger.to_string());
+    let is_enrolled = ctx.is_finger_enrolled(finger);
     //let is_enrolled = rand::random::<bool>(); silly little debugger
 
     // Base fingerprint icon with optional enrollment badge overlay
@@ -529,7 +507,6 @@ fn create_finger_button(
 
     let finger_key = finger.to_string();
     let ctx_clone = ctx.clone();
-    let enrolled_c = enrolled.clone();
 
     button.connect_clicked(move |_| {
         ctx_clone.set_selected_finger(Some(finger_key.clone()));
@@ -548,7 +525,7 @@ fn create_finger_button(
         info!("User selected finger: '{}'", finger_key);
 
         // Update button states when finger is selected
-        let is_enrolled = enrolled_c.contains(&finger_key);
+        let is_enrolled = ctx_clone.is_finger_enrolled(&finger_key);
         ctx_clone.update_button_states(is_enrolled);
     });
 
@@ -568,9 +545,9 @@ fn create_finger_button(
 }
 
 /// Update button states based on selected finger and enrollment status
-fn update_button_states(enrolled: &HashSet<String>, ctx: &FingerprintContext) {
+fn update_button_states(ctx: &FingerprintContext) {
     if let Some(ref finger_key) = ctx.get_selected_finger() {
-        let is_enrolled = enrolled.contains(finger_key);
+        let is_enrolled = ctx.is_finger_enrolled(finger_key);
 
         ctx.update_button_states(is_enrolled);
 

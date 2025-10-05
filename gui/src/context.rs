@@ -3,6 +3,7 @@
 use gtk4::prelude::*;
 use gtk4::{Button, FlowBox, Label, Stack, Switch};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -13,6 +14,7 @@ pub struct FingerprintContext {
     pub rt: Arc<Runtime>,
     pub ui: UiComponents,
     pub selected_finger: Rc<RefCell<Option<String>>>,
+    pub enrolled: Rc<RefCell<HashSet<String>>>,
 }
 
 /// UI components grouped by functionality.
@@ -102,6 +104,7 @@ impl FingerprintContext {
             rt,
             ui,
             selected_finger,
+            enrolled: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -133,5 +136,20 @@ impl FingerprintContext {
     /// Set the currently selected finger.
     pub fn set_selected_finger(&self, finger: Option<String>) {
         *self.selected_finger.borrow_mut() = finger;
+    }
+
+    /// Get the enrolled fingerprints.
+    pub fn get_enrolled(&self) -> HashSet<String> {
+        self.enrolled.borrow().clone()
+    }
+
+    /// Set the enrolled fingerprints.
+    pub fn set_enrolled(&self, enrolled: HashSet<String>) {
+        *self.enrolled.borrow_mut() = enrolled;
+    }
+
+    /// Check if a finger is enrolled.
+    pub fn is_finger_enrolled(&self, finger: &str) -> bool {
+        self.enrolled.borrow().contains(finger)
     }
 }
