@@ -123,7 +123,11 @@ impl Drop for DeviceManager {
 /// Convenience functions for common device operations.
 impl DeviceManager {
     /// Execute enrollment operation with automatic device management.
-    pub async fn enroll_finger<F>(finger_key: String, setup_listener: F) -> Result<(), DeviceError>
+    /// Returns the DeviceManager which must be kept alive until enrollment completes.
+    pub async fn enroll_finger<F>(
+        finger_key: String,
+        setup_listener: F,
+    ) -> Result<Self, DeviceError>
     where
         F: FnOnce(&fprintd::Device) -> Result<(), DeviceError>,
     {
@@ -146,7 +150,7 @@ impl DeviceManager {
         }
 
         info!("Enrollment started successfully, waiting for finger scans...");
-        Ok(())
+        Ok(manager)
     }
 
     /// Execute removal operation with automatic device management.

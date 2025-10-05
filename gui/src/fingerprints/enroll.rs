@@ -8,6 +8,8 @@ use gtk4::glib;
 
 use log::{info, warn};
 use std::sync::mpsc::{self, TryRecvError};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Events sent during enrollment process.
 #[derive(Clone)]
@@ -15,6 +17,9 @@ pub enum EnrollmentEvent {
     SetText(String),
     EnrollCompleted,
 }
+
+/// Holds the DeviceManager during enrollment to keep device claimed.
+type SharedDeviceManager = Arc<Mutex<Option<DeviceManager>>>;
 
 /// Start fingerprint enrollment process for specified finger.
 pub fn start_enrollment(finger_key: String, ctx: FingerprintContext) {
@@ -64,22 +69,32 @@ fn spawn_enrollment_task(
             finger_key
         );
 
+        // Create shared storage for DeviceManager to keep device claimed during enrollment
+        let device_manager: SharedDeviceManager = Arc::new(Mutex::new(None));
+        let device_manager_for_cleanup = device_manager.clone();
+
         let result = DeviceManager::enroll_finger(finger_key.clone(), |device| {
-            setup_enrollment_listener_sync(device, &tx)
+            setup_enrollment_listener_sync(device, &tx, device_manager_for_cleanup)
         })
         .await;
 
-        if let Err(e) = result {
-            let error_msg = match e {
-                DeviceError::NoDeviceAvailable => {
-                    format!(
-                        "<span foreground='{}'>No fingerprint devices available.</span>",
-                        config::colors().warning
-                    )
-                }
-                _ => format!("Failed to start enrollment: {}", e),
-            };
-            let _ = tx.send(EnrollmentEvent::SetText(error_msg));
+        match result {
+            Ok(manager) => {
+                // Store the DeviceManager to keep the device claimed
+                *device_manager.lock().await = Some(manager);
+            }
+            Err(e) => {
+                let error_msg = match e {
+                    DeviceError::NoDeviceAvailable => {
+                        format!(
+                            "<span foreground='{}'>No fingerprint devices available.</span>",
+                            config::colors().warning
+                        )
+                    }
+                    _ => format!("Failed to start enrollment: {}", e),
+                };
+                let _ = tx.send(EnrollmentEvent::SetText(error_msg));
+            }
         }
     });
 }
@@ -88,19 +103,24 @@ fn spawn_enrollment_task(
 fn setup_enrollment_listener_sync(
     device: &fprintd::Device,
     tx: &mpsc::Sender<EnrollmentEvent>,
+    device_manager: SharedDeviceManager,
 ) -> Result<(), DeviceError> {
     let device_clone = device.clone();
     let tx_clone = tx.clone();
 
     tokio::spawn(async move {
-        setup_enrollment_listener(&device_clone, &tx_clone).await;
+        setup_enrollment_listener(&device_clone, &tx_clone, device_manager).await;
     });
 
     Ok(())
 }
 
 /// Set up enrollment status listener.
-async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<EnrollmentEvent>) {
+async fn setup_enrollment_listener(
+    device: &fprintd::Device,
+    tx: &mpsc::Sender<EnrollmentEvent>,
+    device_manager: SharedDeviceManager,
+) {
     let device_for_listener = device.clone();
     let device_for_cleanup = device.clone();
     let tx_status = tx.clone();
@@ -202,7 +222,11 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
 
                 if evt.done {
                     info!("Enrollment process finished, cleaning up device");
-                    cleanup_enrollment_device(device_for_cleanup.clone());
+                    let device_clone = device_for_cleanup.clone();
+                    let manager_clone = device_manager.clone();
+                    tokio::spawn(async move {
+                        cleanup_enrollment_device(device_clone, manager_clone).await;
+                    });
                 }
             })
             .await;
@@ -210,12 +234,12 @@ async fn setup_enrollment_listener(device: &fprintd::Device, tx: &mpsc::Sender<E
 }
 
 /// Clean up enrollment device.
-fn cleanup_enrollment_device(device: fprintd::Device) {
-    tokio::spawn(async move {
-        if let Err(e) = device.enroll_stop().await {
-            warn!("Failed to stop enrollment: {}", e);
-        }
-        // Device release is now handled by DeviceManager's Drop implementation
-        info!("Enrollment cleanup completed");
-    });
+async fn cleanup_enrollment_device(device: fprintd::Device, device_manager: SharedDeviceManager) {
+    if let Err(e) = device.enroll_stop().await {
+        warn!("Failed to stop enrollment: {}", e);
+    }
+
+    // Release the DeviceManager to properly clean up the device
+    *device_manager.lock().await = None;
+    info!("Enrollment cleanup completed");
 }
